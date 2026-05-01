@@ -11,7 +11,7 @@ repos:
 
       - id: black-all
         name: black all files
-        entry: python -m black . --line-length 79
+        entry: python -m black . --line-length 79 --target-version py313
         language: system
         pass_filenames: false
         always_run: true
