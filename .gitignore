@@ -12,6 +12,7 @@ __pycache__/
 venv/
 at-venv/
 env/
+*.lock
 
 # Packaging / build
 build/
