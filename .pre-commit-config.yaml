@@ -1,0 +1,18 @@
+repos:
+  - repo: local
+    hooks:
+      - id: isort-all
+        name: isort all files
+        entry: python -m isort .
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
+      - id: black-all
+        name: black all files
+        entry: python -m black . --line-length 79
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
