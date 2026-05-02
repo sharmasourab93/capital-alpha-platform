@@ -1,8 +1,5 @@
-from .rest import (
-    AngelInstrument,
-    AngelInstrumentMaster,
-    AngelOneSmartApiRestBrokerError,
-)
+from .errors import AngelOneSmartApiRestBrokerError
+from .instrument_master import AngelInstrument, AngelInstrumentMaster
 
 __all__ = [
     "AngelInstrument",
@@ -14,7 +11,7 @@ __all__ = [
 
 def __getattr__(name: str):
     if name == "AngelOneSmartApiRestBroker":
-        from .rest import AngelOneSmartApiRestBroker
+        from .smartapi_rest_broker import AngelOneSmartApiRestBroker
 
         return AngelOneSmartApiRestBroker
     raise AttributeError(name)

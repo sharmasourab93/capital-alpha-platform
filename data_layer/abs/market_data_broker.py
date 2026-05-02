@@ -13,9 +13,9 @@ class BrokerMode(str, Enum):
 
 @dataclass(frozen=True)
 class QuoteRequest:
+    mode: str | None
     exchange: str
-    symbols: tuple[str, ...] = ()
-    instrument_tokens: tuple[str, ...] = ()
+    symbols: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -34,6 +34,16 @@ class InstrumentRequest:
     segment: Optional[str] = None
     symbol: Optional[str] = None
     query: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class DerivativeInstrumentRequest:
+    exchange: str
+    underlying: str
+    instrument_type: str
+    expiry: str
+    strike: float | None = None
+    option_type: str | None = None
 
 
 @dataclass(frozen=True)
