@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-from data_layer.abs.broker_abs import (
+from data_layer.abs import (
     BrokerRequestContext,
     CandleRequest,
     InstrumentRequest,
     QuoteRequest,
 )
-from data_layer.brokers.angelone import AngelOneRestBroker
 
 
 class RestRouter:
     def __init__(self) -> None:
         self._brokers = {
-            "angelone": AngelOneRestBroker,
+            "angelone": "angelone",
             "zerodha": None,
         }
 
@@ -101,14 +100,22 @@ class RestRouter:
         }
 
     def _resolve_broker(self, name: str):
-        broker_cls = self._brokers.get(name)
-        if broker_cls is None:
+        broker_ref = self._brokers.get(name)
+        if broker_ref is None:
             if name == "zerodha":
                 raise NotImplementedError(
                     "Zerodha REST broker is not implemented yet"
                 )
             raise ValueError("Unsupported provider: {0}".format(name))
-        return broker_cls()
+
+        if broker_ref == "angelone":
+            from data_layer.brokers.angelone.rest import (
+                AngelOneSmartApiRestBroker,
+            )
+
+            return AngelOneSmartApiRestBroker()
+
+        return broker_ref()
 
     @staticmethod
     def _require(query: dict[str, str], key: str) -> str:

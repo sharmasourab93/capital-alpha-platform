@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import json
-from time import perf_counter
 from uuid import uuid4
 
-from .router import RestRouter
+from .http_core import handle_http_request
 
 
 def lambda_handler(event: dict, context: object | None = None) -> dict:
@@ -20,30 +19,13 @@ def lambda_handler(event: dict, context: object | None = None) -> dict:
         or "GET"
     )
     query = event.get("queryStringParameters") or {}
-    started_at = perf_counter()
-
-    try:
-        status_code, payload = RestRouter().handle(
-            path=path, method=method, query=query, request_id=request_id
-        )
-        payload.setdefault("meta", {})
-        payload["meta"]["request_id"] = request_id
-        payload["meta"]["latency_ms"] = int(
-            (perf_counter() - started_at) * 1000
-        )
-        return _response(status_code, payload)
-    except Exception as exc:  # noqa: BLE001
-        return _response(
-            500,
-            {
-                "error": {
-                    "type": "REST_HANDLER_ERROR",
-                    "message": str(exc),
-                    "details": [],
-                },
-                "meta": {"request_id": request_id},
-            },
-        )
+    status_code, payload = handle_http_request(
+        path=path,
+        method=method,
+        query=query,
+        request_id=request_id,
+    )
+    return _response(status_code, payload)
 
 
 def _response(status_code: int, body: dict) -> dict:
