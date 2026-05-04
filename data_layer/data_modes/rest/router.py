@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from time import perf_counter
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:  # pragma: no cover
@@ -39,11 +40,16 @@ class RestRouter:
                 "GET": self._exchange_symbol_name_map
             },
             "/market/derivative-symbols": {"GET": self._derivative_symbols},
+            "/market/derivative-underlyings": {
+                "GET": self._derivative_underlyings
+            },
+            "/market/derivative-expiries": {"GET": self._derivative_expiries},
+            "/market/derivative-strikes": {"GET": self._derivative_strikes},
+            "/market/derivative-contracts": {"GET": self._derivative_contracts},
             "/market/quotes": {"POST": self._quotes},
-            "/market/marketdata": {"POST": self._quotes},
             "/market/candles": {"POST": self._candles},
+            "/market/derivatives/history": {"POST": self._derivative_history},
             "/market/derivatives/resolve": {"POST": self._resolve_derivative},
-            "/market/derivatives/tokens": {"POST": self._derivative_tokens},
         }
 
     def handle(
@@ -77,11 +83,14 @@ class RestRouter:
         broker_name = self._require(source, "provider").lower()
         broker = self._resolve_broker(broker_name)
         context = BrokerRequestContext(request_id=request_id)
+        started_at = perf_counter()
         response = handler(
             broker=broker,
             data=source,
             context=context,
         )
+        elapsed_ms = (perf_counter() - started_at) * 1000
+        response.response_meta["router_elapsed_ms"] = round(elapsed_ms, 3)
         return 200, self._ok(response)
 
     def _health(self) -> dict:
@@ -121,12 +130,12 @@ class RestRouter:
     def _instruments(
         self, *, broker, data: dict, context: BrokerRequestContext
     ):
+        market = data.get("market") or data.get("exchange")
+        query = data.get("query")
         return broker.fetch_instruments(
             InstrumentRequest(
-                exchange=self._require(data, "exchange").upper(),
-                segment=data.get("segment"),
-                symbol=data.get("symbol"),
-                query=data.get("query") or data.get("symbol"),
+                exchange=self._require({"market": market}, "market").upper(),
+                query=self._require({"query": query}, "query"),
             ),
             context=context,
         )
@@ -165,7 +174,13 @@ class RestRouter:
         data: dict,
         context: BrokerRequestContext,
     ):
-        return broker.fetch_exchange_symbol_name_map(context=context)
+        return broker.fetch_exchange_symbol_name_map(
+            exchange=data.get("exchange"),
+            query=data.get("query"),
+            offset=self._optional_int(data.get("offset"), default=0),
+            limit=self._optional_int(data.get("limit"), default=100),
+            context=context,
+        )
 
     def _derivative_symbols(
         self,
@@ -180,6 +195,91 @@ class RestRouter:
             context=context,
         )
 
+    def _derivative_expiries(
+        self,
+        *,
+        broker,
+        data: dict,
+        context: BrokerRequestContext,
+    ):
+        return broker.fetch_derivative_expiries(
+            exchange=self._require(data, "exchange").upper(),
+            underlying=self._require(data, "underlying"),
+            instrument_type=self._require(data, "instrument_type"),
+            context=context,
+        )
+
+    def _derivative_contracts(
+        self,
+        *,
+        broker,
+        data: dict,
+        context: BrokerRequestContext,
+    ):
+        return broker.fetch_derivative_contracts(
+            exchange=self._require(data, "exchange").upper(),
+            underlying=self._require(data, "underlying"),
+            instrument_type=self._require(data, "instrument_type"),
+            expiry=self._require(data, "expiry"),
+            option_type=data.get("option_type"),
+            context=context,
+        )
+
+    def _derivative_strikes(
+        self,
+        *,
+        broker,
+        data: dict,
+        context: BrokerRequestContext,
+    ):
+        return broker.fetch_derivative_strikes(
+            exchange=self._require(data, "exchange").upper(),
+            underlying=self._require(data, "underlying"),
+            instrument_type=self._require(data, "instrument_type"),
+            expiry=self._require(data, "expiry"),
+            option_type=data.get("option_type"),
+            context=context,
+        )
+
+    def _derivative_underlyings(
+        self,
+        *,
+        broker,
+        data: dict,
+        context: BrokerRequestContext,
+    ):
+        return broker.fetch_derivative_underlyings(
+            exchange=data.get("exchange"),
+            instrument_type=data.get("instrument_type"),
+            context=context,
+        )
+
+    def _derivative_history(
+        self,
+        *,
+        broker,
+        data: dict,
+        context: BrokerRequestContext,
+    ):
+        derivative_request = self._derivative_request(data)
+        resolved_response = broker.resolve_derivative_instruments(
+            requests=(derivative_request,),
+            context=context,
+        )
+        instrument = resolved_response.payload[0]
+
+        return broker.fetch_candles(
+            CandleRequest(
+                exchange=self._require(data, "exchange").upper(),
+                interval=self._require(data, "interval"),
+                from_date=self._require(data, "from"),
+                to_date=self._require(data, "to"),
+                symbol=str(instrument["symbol"]),
+                instrument_token=str(instrument["token"]),
+            ),
+            context=context,
+        )
+
     def _resolve_derivative(
         self,
         *,
@@ -189,19 +289,6 @@ class RestRouter:
     ):
         requests = self._derivative_requests(data)
         return broker.resolve_derivative_instruments(
-            requests=requests,
-            context=context,
-        )
-
-    def _derivative_tokens(
-        self,
-        *,
-        broker,
-        data: dict,
-        context: BrokerRequestContext,
-    ):
-        requests = self._derivative_requests(data)
-        return broker.fetch_derivative_tokens(
             requests=requests,
             context=context,
         )
@@ -308,3 +395,11 @@ class RestRouter:
         if isinstance(value, str) and not value.strip():
             return None
         return float(value)
+
+    @staticmethod
+    def _optional_int(value, *, default: int) -> int:
+        if value is None:
+            return default
+        if isinstance(value, str) and not value.strip():
+            return default
+        return int(value)
