@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import datetime
+import re
 from threading import Lock
 from typing import DefaultDict
 
@@ -20,6 +22,7 @@ class AngelInstrument:
     token: str
     symbol: str
     name: str
+    underlying: str
     exchange: str
     exchange_segment: str
     instrument_type: str
@@ -27,10 +30,6 @@ class AngelInstrument:
     strike: float | None
     lot_size: int | None
     option_type: str | None
-
-    @property
-    def underlying(self) -> str:
-        return self.name.upper()
 
     @property
     def is_derivative(self) -> bool:
@@ -117,7 +116,11 @@ class AngelInstrumentMaster:
 
     @classmethod
     def from_rows(cls, rows: list[dict]) -> AngelInstrumentMaster:
-        instruments = [cls._row_to_instrument(row) for row in rows]
+        instruments: list[AngelInstrument] = []
+        for row in rows:
+            instrument = cls._try_row_to_instrument(row)
+            if instrument is not None:
+                instruments.append(instrument)
         return cls(instruments=instruments)
 
     @staticmethod
@@ -142,24 +145,45 @@ class AngelInstrumentMaster:
         symbol = (row.get("symbol") or "").upper()
         exchange = (row.get("exch_seg") or "").upper()
         instrument_type = (row.get("instrumenttype") or "").upper()
-        strike = _parse_strike(row.get("strike"))
+        option_type = _extract_option_type(symbol)
+        strike = _parse_strike(
+            row.get("strike"),
+            symbol=symbol,
+            instrument_type=instrument_type,
+            option_type=option_type,
+        )
+        name = row.get("name") or ""
 
         return AngelInstrument(
             token=str(row["token"]),
             symbol=symbol,
-            name=row.get("name") or "",
+            name=name,
+            underlying=_normalize_underlying(
+                name,
+                symbol=symbol,
+                instrument_type=instrument_type,
+            ),
             exchange=exchange,
             exchange_segment=exchange,
             instrument_type=instrument_type,
             expiry=row.get("expiry") or None,
             strike=strike,
-            lot_size=(
-                int(row["lotsize"])
-                if row.get("lotsize") not in ("", None)
-                else None
-            ),
-            option_type=_extract_option_type(symbol),
+            lot_size=_parse_lot_size(row.get("lotsize")),
+            option_type=option_type,
         )
+
+    @classmethod
+    def _try_row_to_instrument(cls, row: dict) -> AngelInstrument | None:
+        token = row.get("token")
+        symbol = row.get("symbol")
+        exchange = row.get("exch_seg")
+        if token in ("", None) or symbol in ("", None) or exchange in ("", None):
+            return None
+
+        try:
+            return cls._row_to_instrument(row)
+        except (TypeError, ValueError, KeyError):
+            return None
 
     def get_by_token(self, token: str) -> AngelInstrument | None:
         return self.by_token.get(str(token))
@@ -367,7 +391,7 @@ class AngelInstrumentMaster:
             and instrument.instrument_type == normalized_instrument_type
             and instrument.expiry
         }
-        return tuple(sorted(expiries))
+        return tuple(sorted(expiries, key=_expiry_sort_key))
 
     def get_derivative_underlyings(
         self,
@@ -425,7 +449,7 @@ class AngelInstrumentMaster:
         normalized_instrument_type = instrument_type.upper()
         normalized_option_type = option_type.upper() if option_type else None
 
-        contracts = []
+        contracts_by_symbol: dict[str, dict[str, str | float | int | None]] = {}
         for instrument in self.instruments:
             if not instrument.is_derivative:
                 continue
@@ -443,7 +467,8 @@ class AngelInstrumentMaster:
             ):
                 continue
 
-            contracts.append(
+            contracts_by_symbol.setdefault(
+                instrument.symbol,
                 {
                     "symbol": instrument.symbol,
                     "exchange": instrument.exchange,
@@ -454,11 +479,11 @@ class AngelInstrumentMaster:
                     "strike": instrument.strike,
                     "lot_size": instrument.lot_size,
                     "option_type": instrument.option_type,
-                }
+                },
             )
 
         return sorted(
-            contracts,
+            contracts_by_symbol.values(),
             key=lambda item: (
                 item["strike"] is None,
                 item["strike"] or 0,
@@ -466,6 +491,36 @@ class AngelInstrumentMaster:
                 item["symbol"],
             ),
         )
+
+    def get_derivative_strikes(
+        self,
+        *,
+        exchange: str,
+        underlying: str,
+        instrument_type: str,
+        expiry: str,
+        option_type: str | None = None,
+    ) -> tuple[float, ...]:
+        normalized_exchange = exchange.upper()
+        normalized_underlying = underlying.upper()
+        normalized_instrument_type = instrument_type.upper()
+        normalized_option_type = option_type.upper() if option_type else None
+
+        strikes = {
+            instrument.strike
+            for instrument in self.instruments
+            if instrument.is_derivative
+            and instrument.exchange == normalized_exchange
+            and instrument.underlying == normalized_underlying
+            and instrument.instrument_type == normalized_instrument_type
+            and instrument.expiry == expiry
+            and instrument.strike is not None
+            and (
+                normalized_option_type is None
+                or instrument.option_type == normalized_option_type
+            )
+        }
+        return tuple(sorted(strikes))
 
     def resolve_derivative_instrument(
         self,
@@ -498,8 +553,9 @@ class AngelInstrumentMaster:
                 or instrument.option_type == normalized_option_type
             )
         ]
+        unique_matches = _dedupe_instruments(matches)
 
-        if not matches:
+        if not unique_matches:
             raise LookupError(
                 "No derivative instrument found for exchange={0}, underlying={1}, "
                 "instrument_type={2}, expiry={3}, strike={4}, option_type={5}".format(
@@ -512,7 +568,7 @@ class AngelInstrumentMaster:
                 )
             )
 
-        if len(matches) > 1:
+        if len(unique_matches) > 1:
             raise LookupError(
                 "Multiple derivative instruments found for exchange={0}, underlying={1}, "
                 "instrument_type={2}, expiry={3}, strike={4}, option_type={5}".format(
@@ -525,7 +581,7 @@ class AngelInstrumentMaster:
                 )
             )
 
-        return matches[0]
+        return unique_matches[0]
 
 
 def _extract_option_type(symbol: str) -> str | None:
@@ -536,16 +592,101 @@ def _extract_option_type(symbol: str) -> str | None:
     return None
 
 
-def _parse_strike(value) -> float | None:
+def _parse_strike(
+    value,
+    *,
+    symbol: str,
+    instrument_type: str,
+    option_type: str | None,
+) -> float | None:
+    symbol_strike = _extract_strike_from_symbol(
+        symbol,
+        instrument_type=instrument_type,
+        option_type=option_type,
+    )
+    if symbol_strike is not None:
+        return symbol_strike
+
     if value in ("", None):
         return None
 
-    parsed = float(value)
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
     if parsed <= 0:
         return None
     if parsed >= 100000:
         return parsed / 100.0
     return parsed
+
+
+def _parse_lot_size(value) -> int | None:
+    if value in ("", None):
+        return None
+    return int(value)
+
+
+def _extract_strike_from_symbol(
+    symbol: str,
+    *,
+    instrument_type: str,
+    option_type: str | None,
+) -> float | None:
+    if option_type is None or "OPT" not in instrument_type:
+        return None
+
+    match = re.search(r"\d{2}[A-Z]{3}\d{4}(\d+)(CE|PE)$", symbol)
+    if match is None:
+        return None
+
+    return float(match.group(1))
+
+
+def _normalize_underlying(
+    value: str,
+    *,
+    symbol: str,
+    instrument_type: str,
+) -> str:
+    normalized_value = _normalize_underlying_text(value)
+    if normalized_value:
+        return normalized_value
+
+    inferred_underlying = _infer_underlying_from_symbol(
+        symbol,
+        instrument_type=instrument_type,
+    )
+    if inferred_underlying:
+        return inferred_underlying
+
+    return _normalize_underlying_text(symbol)
+
+
+def _normalize_underlying_text(value: str) -> str:
+    return " ".join(str(value).upper().split())
+
+
+def _infer_underlying_from_symbol(
+    symbol: str,
+    *,
+    instrument_type: str,
+) -> str:
+    if "FUT" not in instrument_type and "OPT" not in instrument_type:
+        return ""
+
+    match = re.search(r"^(.*?)(\d{2}[A-Z]{3}\d{4})", symbol)
+    if match is None:
+        return ""
+
+    return match.group(1).upper().strip()
+
+
+def _expiry_sort_key(expiry: str) -> tuple[int, datetime | str]:
+    try:
+        return (0, datetime.strptime(expiry.upper(), "%d%b%Y"))
+    except ValueError:
+        return (1, expiry)
 
 
 def _equity_symbol_candidates(symbol: str) -> tuple[str, ...]:

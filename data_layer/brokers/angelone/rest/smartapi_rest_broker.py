@@ -459,6 +459,39 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
             },
         )
 
+    def fetch_derivative_strikes(
+        self,
+        *,
+        exchange: str,
+        underlying: str,
+        instrument_type: str,
+        expiry: str,
+        option_type: str | None = None,
+        context: BrokerRequestContext | None = None,
+    ) -> BrokerResponse:
+        market_data = self._get_market_data()
+        strikes = market_data.get_derivative_strikes(
+            exchange=exchange,
+            underlying=underlying,
+            instrument_type=instrument_type,
+            expiry=expiry,
+            option_type=option_type,
+        )
+
+        return BrokerResponse(
+            broker_name=self.broker_name,
+            operation="fetch_derivative_strikes",
+            payload=strikes,
+            response_meta={
+                "exchange": exchange.upper(),
+                "underlying": underlying.upper(),
+                "instrument_type": instrument_type.upper(),
+                "expiry": expiry,
+                "option_type": option_type.upper() if option_type else None,
+                "strike_count": len(strikes),
+            },
+        )
+
     def fetch_instruments_by_exchange(
         self,
         exchange: str,
