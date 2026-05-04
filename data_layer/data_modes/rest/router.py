@@ -1,8 +1,18 @@
 from __future__ import annotations
 
+import sys
+from collections.abc import Callable
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(PROJECT_ROOT) not in sys.path:  # pragma: no cover
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from data_layer.abs import (
     BrokerRequestContext,
+    BrokerResponse,
     CandleRequest,
+    DerivativeInstrumentRequest,
     InstrumentRequest,
     QuoteRequest,
 )
@@ -14,92 +24,213 @@ class RestRouter:
             "angelone": "angelone",
             "zerodha": None,
         }
-
-    def handle(
-        self, path: str, method: str, query: dict[str, str], request_id: str
-    ) -> tuple[int, dict]:
-        if method != "GET":
-            return 405, {
-                "error": {
-                    "type": "METHOD_NOT_ALLOWED",
-                    "message": "Only GET is supported",
-                    "details": [],
-                }
-            }
-
-        if path == "/health":
-            return 200, {"data": {"status": "ok", "mode": "rest"}}
-
-        broker_name = self._require(query, "provider").lower()
-        broker = self._resolve_broker(broker_name)
-        context = BrokerRequestContext(request_id=request_id)
-
-        if path == "/market/quotes":
-            response = broker.fetch_quotes(
-                QuoteRequest(
-                    exchange=self._require(query, "exchange").upper(),
-                    symbols=tuple(self._csv(query.get("symbols"))),
-                    instrument_tokens=tuple(
-                        self._csv(query.get("instrument_tokens"))
-                    ),
-                ),
-                context=context,
-            )
-            return 200, {
-                "data": response.payload,
-                "meta": {
-                    "broker": response.broker_name,
-                    "operation": response.operation,
-                },
-            }
-
-        if path == "/market/candles":
-            response = broker.fetch_candles(
-                CandleRequest(
-                    exchange=self._require(query, "exchange").upper(),
-                    interval=self._require(query, "interval"),
-                    from_date=self._require(query, "from"),
-                    to_date=self._require(query, "to"),
-                    symbol=query.get("symbol"),
-                    instrument_token=query.get("instrument_token"),
-                ),
-                context=context,
-            )
-            return 200, {
-                "data": response.payload,
-                "meta": {
-                    "broker": response.broker_name,
-                    "operation": response.operation,
-                },
-            }
-
-        if path == "/market/instruments":
-            response = broker.fetch_instruments(
-                InstrumentRequest(
-                    exchange=self._require(query, "exchange").upper(),
-                    segment=query.get("segment"),
-                    symbol=query.get("symbol"),
-                    query=query.get("query") or query.get("symbol"),
-                ),
-                context=context,
-            )
-            return 200, {
-                "data": response.payload,
-                "meta": {
-                    "broker": response.broker_name,
-                    "operation": response.operation,
-                },
-            }
-
-        return 404, {
-            "error": {
-                "type": "NOT_FOUND",
-                "message": "Route not found",
-                "details": [],
-            }
+        self._broker_instances: dict[str, object] = {}
+        self._route_handlers: dict[
+            str, dict[str, Callable[..., BrokerResponse | dict]]
+        ] = {
+            "/health": {"GET": self._health},
+            "/market/instruments": {"GET": self._instruments},
+            "/market/exchanges": {"GET": self._exchanges},
+            "/market/instrument-types": {"GET": self._instrument_types},
+            "/market/instruments-by-exchange": {
+                "GET": self._instruments_by_exchange
+            },
+            "/market/exchange-symbol-name-map": {
+                "GET": self._exchange_symbol_name_map
+            },
+            "/market/derivative-symbols": {"GET": self._derivative_symbols},
+            "/market/quotes": {"POST": self._quotes},
+            "/market/marketdata": {"POST": self._quotes},
+            "/market/candles": {"POST": self._candles},
+            "/market/derivatives/resolve": {"POST": self._resolve_derivative},
+            "/market/derivatives/tokens": {"POST": self._derivative_tokens},
         }
 
+    def handle(
+        self,
+        path: str,
+        method: str,
+        query: dict[str, str],
+        body: dict,
+        request_id: str,
+    ) -> tuple[int, dict]:
+        route_methods = self._route_handlers.get(path)
+        if route_methods is None:
+            return 404, self._error(
+                error_type="NOT_FOUND",
+                message="Route not found",
+            )
+
+        handler = route_methods.get(method)
+        if handler is None:
+            return 405, self._error(
+                error_type="METHOD_NOT_ALLOWED",
+                message="Method {0} is not supported for {1}".format(
+                    method, path
+                ),
+            )
+
+        if path == "/health":
+            return 200, {"data": handler()}
+
+        source = body if method == "POST" else query
+        broker_name = self._require(source, "provider").lower()
+        broker = self._resolve_broker(broker_name)
+        context = BrokerRequestContext(request_id=request_id)
+        response = handler(
+            broker=broker,
+            data=source,
+            context=context,
+        )
+        return 200, self._ok(response)
+
+    def _health(self) -> dict:
+        return {"status": "ok", "mode": "rest"}
+
+    def _quotes(self, *, broker, data: dict, context: BrokerRequestContext):
+        mode = data.get("mode") or "FULL"
+        symbols = self._listify(data.get("symbols"))
+        return broker.fetch_quotes(
+            QuoteRequest(
+                mode=mode,
+                exchange=self._require(data, "exchange").upper(),
+                symbols=tuple(symbols),
+            ),
+            context=context,
+        )
+
+    def _candles(self, *, broker, data: dict, context: BrokerRequestContext):
+        exchange = self._require(data, "exchange").upper()
+        symbol = self._require(data, "symbol")
+        instrument_token = broker._resolve_symbol_tokens((symbol,), exchange)[
+            0
+        ]
+
+        return broker.fetch_candles(
+            CandleRequest(
+                exchange=exchange,
+                interval=self._require(data, "interval"),
+                from_date=self._require(data, "from"),
+                to_date=self._require(data, "to"),
+                symbol=symbol,
+                instrument_token=instrument_token,
+            ),
+            context=context,
+        )
+
+    def _instruments(
+        self, *, broker, data: dict, context: BrokerRequestContext
+    ):
+        return broker.fetch_instruments(
+            InstrumentRequest(
+                exchange=self._require(data, "exchange").upper(),
+                segment=data.get("segment"),
+                symbol=data.get("symbol"),
+                query=data.get("query") or data.get("symbol"),
+            ),
+            context=context,
+        )
+
+    def _exchanges(self, *, broker, data: dict, context: BrokerRequestContext):
+        return broker.fetch_exchanges(context=context)
+
+    def _instrument_types(
+        self,
+        *,
+        broker,
+        data: dict,
+        context: BrokerRequestContext,
+    ):
+        return broker.fetch_instrument_types(
+            exchange=data.get("exchange"),
+            context=context,
+        )
+
+    def _instruments_by_exchange(
+        self,
+        *,
+        broker,
+        data: dict,
+        context: BrokerRequestContext,
+    ):
+        return broker.fetch_instruments_by_exchange(
+            exchange=self._require(data, "exchange").upper(),
+            context=context,
+        )
+
+    def _exchange_symbol_name_map(
+        self,
+        *,
+        broker,
+        data: dict,
+        context: BrokerRequestContext,
+    ):
+        return broker.fetch_exchange_symbol_name_map(context=context)
+
+    def _derivative_symbols(
+        self,
+        *,
+        broker,
+        data: dict,
+        context: BrokerRequestContext,
+    ):
+        return broker.fetch_derivative_symbols(
+            exchange=data.get("exchange"),
+            instrument_type=data.get("instrument_type"),
+            context=context,
+        )
+
+    def _resolve_derivative(
+        self,
+        *,
+        broker,
+        data: dict,
+        context: BrokerRequestContext,
+    ):
+        requests = self._derivative_requests(data)
+        return broker.resolve_derivative_instruments(
+            requests=requests,
+            context=context,
+        )
+
+    def _derivative_tokens(
+        self,
+        *,
+        broker,
+        data: dict,
+        context: BrokerRequestContext,
+    ):
+        requests = self._derivative_requests(data)
+        return broker.fetch_derivative_tokens(
+            requests=requests,
+            context=context,
+        )
+
+    def _derivative_requests(
+        self, data: dict
+    ) -> tuple[DerivativeInstrumentRequest, ...]:
+        request_items = data.get("requests")
+        if request_items:
+            return tuple(
+                self._derivative_request(item) for item in request_items
+            )
+        return (self._derivative_request(data),)
+
+    def _derivative_request(self, data: dict) -> DerivativeInstrumentRequest:
+        return DerivativeInstrumentRequest(
+            exchange=self._require(data, "exchange").upper(),
+            underlying=self._require(data, "underlying"),
+            instrument_type=self._require(data, "instrument_type"),
+            expiry=self._require(data, "expiry"),
+            strike=self._optional_float(data.get("strike")),
+            option_type=data.get("option_type"),
+        )
+
     def _resolve_broker(self, name: str):
+        cached_broker = self._broker_instances.get(name)
+        if cached_broker is not None:
+            return cached_broker
+
         broker_ref = self._brokers.get(name)
         if broker_ref is None:
             if name == "zerodha":
@@ -113,19 +244,67 @@ class RestRouter:
                 AngelOneSmartApiRestBroker,
             )
 
-            return AngelOneSmartApiRestBroker()
+            broker = AngelOneSmartApiRestBroker()
+            self._broker_instances[name] = broker
+            return broker
 
-        return broker_ref()
+        broker = broker_ref()
+        self._broker_instances[name] = broker
+        return broker
 
     @staticmethod
-    def _require(query: dict[str, str], key: str) -> str:
-        value = query.get(key)
-        if not value:
+    def _ok(response: BrokerResponse) -> dict:
+        response_meta = dict(response.response_meta)
+        response_meta.pop("tokens", None)
+        response_meta.pop("instrument_token", None)
+        response_meta.pop("instrument_tokens", None)
+
+        return {
+            "data": response.payload,
+            "meta": {
+                "broker": response.broker_name,
+                "operation": response.operation,
+                "response_meta": response_meta,
+            },
+        }
+
+    @staticmethod
+    def _error(
+        error_type: str, message: str, details: list | None = None
+    ) -> dict:
+        return {
+            "error": {
+                "type": error_type,
+                "message": message,
+                "details": details or [],
+            }
+        }
+
+    @staticmethod
+    def _require(data: dict, key: str) -> str:
+        value = data.get(key)
+        if value is None:
             raise ValueError("{0} is required".format(key))
-        return value.strip()
+        if isinstance(value, str):
+            value = value.strip()
+        if value == "":
+            raise ValueError("{0} is required".format(key))
+        return value
 
     @staticmethod
-    def _csv(value: str | None) -> list[str]:
-        if not value:
+    def _listify(value) -> list[str]:
+        if value is None:
             return []
-        return [item.strip() for item in value.split(",") if item.strip()]
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return [str(value).strip()]
+
+    @staticmethod
+    def _optional_float(value) -> float | None:
+        if value is None:
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
+        return float(value)

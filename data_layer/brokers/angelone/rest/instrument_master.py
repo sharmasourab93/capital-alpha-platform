@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
+from threading import Lock
 from typing import DefaultDict
 
 from requests import get
@@ -10,6 +11,8 @@ from data_layer.abs import DerivativeInstrumentRequest
 
 DEFAULT_SCRIP_MASTER_URL = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
 DERIVATIVE_EXCHANGES = frozenset({"NFO", "BFO", "CDS", "MCX"})
+_INSTRUMENT_MASTER_CACHE_LOCK = Lock()
+_INSTRUMENT_MASTER_CACHE: dict[tuple[str, float], "AngelInstrumentMaster"] = {}
 
 
 @dataclass(frozen=True)
@@ -82,8 +85,20 @@ class AngelInstrumentMaster:
         url: str = DEFAULT_SCRIP_MASTER_URL,
         timeout_seconds: float = 30.0,
     ) -> AngelInstrumentMaster:
-        rows = cls._download_rows(url, timeout_seconds)
-        return cls.from_rows(rows)
+        cache_key = (url, float(timeout_seconds))
+        cached_master = _INSTRUMENT_MASTER_CACHE.get(cache_key)
+        if cached_master is not None:
+            return cached_master
+
+        with _INSTRUMENT_MASTER_CACHE_LOCK:
+            cached_master = _INSTRUMENT_MASTER_CACHE.get(cache_key)
+            if cached_master is not None:
+                return cached_master
+
+            rows = cls._download_rows(url, timeout_seconds)
+            master = cls.from_rows(rows)
+            _INSTRUMENT_MASTER_CACHE[cache_key] = master
+            return master
 
     @classmethod
     def from_rows(cls, rows: list[dict]) -> AngelInstrumentMaster:
@@ -112,6 +127,7 @@ class AngelInstrumentMaster:
         symbol = (row.get("symbol") or "").upper()
         exchange = (row.get("exch_seg") or "").upper()
         instrument_type = (row.get("instrumenttype") or "").upper()
+        strike = _parse_strike(row.get("strike"))
 
         return AngelInstrument(
             token=str(row["token"]),
@@ -121,11 +137,7 @@ class AngelInstrumentMaster:
             exchange_segment=exchange,
             instrument_type=instrument_type,
             expiry=row.get("expiry") or None,
-            strike=(
-                float(row["strike"])
-                if row.get("strike") not in ("", None)
-                else None
-            ),
+            strike=strike,
             lot_size=(
                 int(row["lotsize"])
                 if row.get("lotsize") not in ("", None)
@@ -348,6 +360,16 @@ def _extract_option_type(symbol: str) -> str | None:
     if symbol.endswith("PE"):
         return "PE"
     return None
+
+
+def _parse_strike(value) -> float | None:
+    if value in ("", None):
+        return None
+
+    parsed = float(value)
+    if parsed <= 0:
+        return None
+    return parsed
 
 
 def _equity_symbol_candidates(symbol: str) -> tuple[str, ...]:
