@@ -8,8 +8,14 @@ from pydantic import BaseModel, Field
 
 try:
     from .http_core import handle_http_request
+    from .security import (
+        enforce_request_security,
+        load_settings,
+        validate_rest_request,
+    )
 except ImportError:  # pragma: no cover
     from http_core import handle_http_request
+    from security import enforce_request_security, load_settings, validate_rest_request
 
 app = FastAPI(
     title="Capital Alpha Market Data REST Layer",
@@ -25,11 +31,26 @@ app = FastAPI(
     ),
     version="1.0.0",
     openapi_tags=[
-        {"name": "system", "description": "Service health and transport-level diagnostics."},
-        {"name": "reference", "description": "Static or semi-static market reference data such as exchanges, instrument types, and broker search results."},
-        {"name": "discovery", "description": "Derivative discovery endpoints used to populate UI dropdowns for underlying, expiry, strike, and contract selection."},
-        {"name": "market-data", "description": "Live and historical market data endpoints for quotes and candles."},
-        {"name": "resolution", "description": "Endpoints that resolve a user-facing derivative selection into a concrete broker instrument."},
+        {
+            "name": "system",
+            "description": "Service health and transport-level diagnostics.",
+        },
+        {
+            "name": "reference",
+            "description": "Static or semi-static market reference data such as exchanges, instrument types, and broker search results.",
+        },
+        {
+            "name": "discovery",
+            "description": "Derivative discovery endpoints used to populate UI dropdowns for underlying, expiry, strike, and contract selection.",
+        },
+        {
+            "name": "market-data",
+            "description": "Live and historical market data endpoints for quotes and candles.",
+        },
+        {
+            "name": "resolution",
+            "description": "Endpoints that resolve a user-facing derivative selection into a concrete broker instrument.",
+        },
     ],
 )
 
@@ -41,6 +62,38 @@ QUOTE_MODE_DESCRIPTION = (
 )
 INTERVAL_DESCRIPTION = "Candle interval. Allowed values: `1m`, `3m`, `5m`, `10m`, `15m`, `30m`, `1h`, `1d`."
 INSTRUMENT_TYPE_DESCRIPTION = "Angel One instrument type. Common values: `EQ`, `FUTIDX`, `FUTSTK`, `OPTIDX`, `OPTSTK`."
+
+
+@app.middleware("http")
+async def rest_security_middleware(request: Request, call_next):
+    security_response = await enforce_request_security(request)
+    if security_response is not None:
+        return security_response
+
+    response = await call_next(request)
+    origin = request.headers.get("origin")
+    settings = load_settings()
+    if origin and origin in settings.allowed_origins:
+        response.headers.setdefault("Access-Control-Allow-Origin", origin)
+        response.headers.setdefault("Vary", "Origin")
+    return response
+
+
+@app.exception_handler(ValueError)
+async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
+    return JSONResponse(
+        status_code=400,
+        content={
+            "error": {
+                "type": "BAD_REQUEST",
+                "message": str(exc),
+                "details": [],
+            },
+            "meta": {
+                "request_id": _request_id(request),
+            },
+        },
+    )
 
 
 class QuotesRequest(BaseModel):
@@ -283,6 +336,12 @@ def _json_response(
     body: dict | None,
     request_id: str | None,
 ) -> JSONResponse:
+    validate_rest_request(
+        path=path,
+        method=method,
+        query=query,
+        body=body,
+    )
     status_code, payload = handle_http_request(
         path=path,
         method=method,

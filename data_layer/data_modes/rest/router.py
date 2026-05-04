@@ -45,7 +45,9 @@ class RestRouter:
             },
             "/market/derivative-expiries": {"GET": self._derivative_expiries},
             "/market/derivative-strikes": {"GET": self._derivative_strikes},
-            "/market/derivative-contracts": {"GET": self._derivative_contracts},
+            "/market/derivative-contracts": {
+                "GET": self._derivative_contracts
+            },
             "/market/quotes": {"POST": self._quotes},
             "/market/candles": {"POST": self._candles},
             "/market/derivatives/history": {"POST": self._derivative_history},
