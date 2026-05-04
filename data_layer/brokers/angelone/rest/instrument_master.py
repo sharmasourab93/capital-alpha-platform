@@ -68,16 +68,31 @@ class AngelInstrumentMaster:
     by_symbol_exchange: DefaultDict[tuple[str, str], list[AngelInstrument]] = (
         field(init=False)
     )
+    symbol_name_map_by_exchange: dict[str, dict[str, str]] = field(init=False)
+    symbol_name_counts_by_exchange: dict[str, int] = field(init=False)
 
     def __post_init__(self) -> None:
         self.by_token = {}
         self.by_symbol_exchange = defaultdict(list)
+        self.symbol_name_map_by_exchange = {}
 
         for instrument in self.instruments:
             self.by_token[instrument.token] = instrument
             self.by_symbol_exchange[
                 (instrument.symbol.upper(), instrument.exchange.upper())
             ].append(instrument)
+            exchange_bucket = self.symbol_name_map_by_exchange.setdefault(
+                instrument.exchange.upper(),
+                {},
+            )
+            exchange_bucket.setdefault(
+                instrument.symbol.upper(), instrument.name
+            )
+
+        self.symbol_name_counts_by_exchange = {
+            exchange: len(symbol_map)
+            for exchange, symbol_map in self.symbol_name_map_by_exchange.items()
+        }
 
     @classmethod
     def from_url(
@@ -220,13 +235,52 @@ class AngelInstrumentMaster:
         )
 
     def get_symbol_name_map_by_exchange(self) -> dict[str, dict[str, str]]:
-        exchange_map: dict[str, dict[str, str]] = {}
+        return {
+            exchange: dict(symbol_map)
+            for exchange, symbol_map in self.symbol_name_map_by_exchange.items()
+        }
 
-        for instrument in self.instruments:
-            exchange_bucket = exchange_map.setdefault(instrument.exchange, {})
-            exchange_bucket.setdefault(instrument.symbol, instrument.name)
+    def get_symbol_name_counts_by_exchange(self) -> dict[str, int]:
+        return dict(self.symbol_name_counts_by_exchange)
 
-        return exchange_map
+    def get_symbol_name_page(
+        self,
+        exchange: str,
+        *,
+        query: str | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> dict[str, str | int | list[dict[str, str]] | None]:
+        normalized_exchange = exchange.upper().strip()
+        normalized_query = query.upper().strip() if query else None
+
+        if offset < 0:
+            raise ValueError("offset must be non-negative")
+        if limit <= 0:
+            raise ValueError("limit must be positive")
+
+        symbol_map = self.symbol_name_map_by_exchange.get(
+            normalized_exchange,
+            {},
+        )
+        items = [
+            {"symbol": symbol, "name": name}
+            for symbol, name in sorted(symbol_map.items())
+            if not normalized_query
+            or normalized_query in symbol
+            or normalized_query in name.upper()
+        ]
+        page = items[offset : offset + limit]
+
+        return {
+            "exchange": normalized_exchange,
+            "query": query,
+            "offset": offset,
+            "limit": limit,
+            "total": len(items),
+            "count": len(page),
+            "items": page,
+        }
 
     def get_instrument_types(
         self,
@@ -292,6 +346,126 @@ class AngelInstrumentMaster:
             }
             for exchange_key, instrument_type_map in derivative_symbols.items()
         }
+
+    def get_derivative_expiries(
+        self,
+        *,
+        exchange: str,
+        underlying: str,
+        instrument_type: str,
+    ) -> tuple[str, ...]:
+        normalized_exchange = exchange.upper()
+        normalized_underlying = underlying.upper()
+        normalized_instrument_type = instrument_type.upper()
+
+        expiries = {
+            instrument.expiry
+            for instrument in self.instruments
+            if instrument.is_derivative
+            and instrument.exchange == normalized_exchange
+            and instrument.underlying == normalized_underlying
+            and instrument.instrument_type == normalized_instrument_type
+            and instrument.expiry
+        }
+        return tuple(sorted(expiries))
+
+    def get_derivative_underlyings(
+        self,
+        *,
+        exchange: str | None = None,
+        instrument_type: str | None = None,
+    ) -> dict[str, dict[str, list[str]]]:
+        normalized_exchange = exchange.upper() if exchange else None
+        normalized_instrument_type = (
+            instrument_type.upper() if instrument_type else None
+        )
+        derivative_underlyings: dict[str, dict[str, set[str]]] = {}
+
+        for instrument in self.instruments:
+            if not instrument.is_derivative:
+                continue
+            if (
+                normalized_exchange
+                and instrument.exchange != normalized_exchange
+            ):
+                continue
+            if (
+                normalized_instrument_type
+                and instrument.instrument_type != normalized_instrument_type
+            ):
+                continue
+
+            exchange_bucket = derivative_underlyings.setdefault(
+                instrument.exchange, {}
+            )
+            underlying_bucket = exchange_bucket.setdefault(
+                instrument.instrument_type, set()
+            )
+            underlying_bucket.add(instrument.underlying)
+
+        return {
+            exchange_key: {
+                instrument_type_key: sorted(underlyings)
+                for instrument_type_key, underlyings in instrument_type_map.items()
+            }
+            for exchange_key, instrument_type_map in derivative_underlyings.items()
+        }
+
+    def get_derivative_contracts(
+        self,
+        *,
+        exchange: str,
+        underlying: str,
+        instrument_type: str,
+        expiry: str,
+        option_type: str | None = None,
+    ) -> list[dict[str, str | float | int | None]]:
+        normalized_exchange = exchange.upper()
+        normalized_underlying = underlying.upper()
+        normalized_instrument_type = instrument_type.upper()
+        normalized_option_type = option_type.upper() if option_type else None
+
+        contracts = []
+        for instrument in self.instruments:
+            if not instrument.is_derivative:
+                continue
+            if instrument.exchange != normalized_exchange:
+                continue
+            if instrument.underlying != normalized_underlying:
+                continue
+            if instrument.instrument_type != normalized_instrument_type:
+                continue
+            if instrument.expiry != expiry:
+                continue
+            if (
+                normalized_option_type is not None
+                and instrument.option_type != normalized_option_type
+            ):
+                continue
+
+            contracts.append(
+                {
+                    "symbol": instrument.symbol,
+                    "exchange": instrument.exchange,
+                    "exchange_segment": instrument.exchange_segment,
+                    "instrument_type": instrument.instrument_type,
+                    "underlying": instrument.underlying,
+                    "expiry": instrument.expiry,
+                    "strike": instrument.strike,
+                    "lot_size": instrument.lot_size,
+                    "option_type": instrument.option_type,
+                }
+            )
+
+        return sorted(
+            contracts,
+            key=lambda item: (
+                item["strike"] is None,
+                item["strike"] or 0,
+                item["option_type"] or "",
+                item["symbol"],
+            ),
+        )
 
     def resolve_derivative_instrument(
         self,
@@ -369,6 +543,8 @@ def _parse_strike(value) -> float | None:
     parsed = float(value)
     if parsed <= 0:
         return None
+    if parsed >= 100000:
+        return parsed / 100.0
     return parsed
 
 

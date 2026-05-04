@@ -268,19 +268,52 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
 
     def fetch_exchange_symbol_name_map(
         self,
+        exchange: str | None = None,
+        query: str | None = None,
+        offset: int = 0,
+        limit: int = 100,
         context: BrokerRequestContext | None = None,
     ) -> BrokerResponse:
         market_data = self._get_market_data()
-        exchange_map = market_data.get_symbol_name_map_by_exchange()
+        if exchange:
+            payload = market_data.get_symbol_name_page(
+                exchange,
+                query=query,
+                offset=offset,
+                limit=limit,
+            )
+            response_meta = {
+                "mode": "page",
+                "exchange": exchange.upper(),
+                "query": query,
+                "offset": offset,
+                "limit": limit,
+            }
+        else:
+            counts_by_exchange = (
+                market_data.get_symbol_name_counts_by_exchange()
+            )
+            payload = {
+                "exchanges": [
+                    {
+                        "exchange": exchange_name,
+                        "symbol_count": symbol_count,
+                    }
+                    for exchange_name, symbol_count in sorted(
+                        counts_by_exchange.items()
+                    )
+                ]
+            }
+            response_meta = {
+                "mode": "summary",
+                "exchange_count": len(counts_by_exchange),
+            }
 
         return BrokerResponse(
             broker_name=self.broker_name,
             operation="fetch_exchange_symbol_name_map",
-            payload=exchange_map,
-            response_meta={
-                "exchanges": market_data.get_exchanges(),
-                "exchange_count": len(exchange_map),
-            },
+            payload=payload,
+            response_meta=response_meta,
         )
 
     def fetch_exchanges(
@@ -340,6 +373,92 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
             },
         )
 
+    def fetch_derivative_expiries(
+        self,
+        *,
+        exchange: str,
+        underlying: str,
+        instrument_type: str,
+        context: BrokerRequestContext | None = None,
+    ) -> BrokerResponse:
+        market_data = self._get_market_data()
+        expiries = market_data.get_derivative_expiries(
+            exchange=exchange,
+            underlying=underlying,
+            instrument_type=instrument_type,
+        )
+
+        return BrokerResponse(
+            broker_name=self.broker_name,
+            operation="fetch_derivative_expiries",
+            payload=expiries,
+            response_meta={
+                "exchange": exchange.upper(),
+                "underlying": underlying.upper(),
+                "instrument_type": instrument_type.upper(),
+                "expiry_count": len(expiries),
+            },
+        )
+
+    def fetch_derivative_underlyings(
+        self,
+        *,
+        exchange: str | None = None,
+        instrument_type: str | None = None,
+        context: BrokerRequestContext | None = None,
+    ) -> BrokerResponse:
+        market_data = self._get_market_data()
+        derivative_underlyings = market_data.get_derivative_underlyings(
+            exchange=exchange,
+            instrument_type=instrument_type,
+        )
+
+        return BrokerResponse(
+            broker_name=self.broker_name,
+            operation="fetch_derivative_underlyings",
+            payload=derivative_underlyings,
+            response_meta={
+                "exchange": exchange.upper() if exchange else None,
+                "instrument_type": (
+                    instrument_type.upper() if instrument_type else None
+                ),
+                "exchange_count": len(derivative_underlyings),
+            },
+        )
+
+    def fetch_derivative_contracts(
+        self,
+        *,
+        exchange: str,
+        underlying: str,
+        instrument_type: str,
+        expiry: str,
+        option_type: str | None = None,
+        context: BrokerRequestContext | None = None,
+    ) -> BrokerResponse:
+        market_data = self._get_market_data()
+        contracts = market_data.get_derivative_contracts(
+            exchange=exchange,
+            underlying=underlying,
+            instrument_type=instrument_type,
+            expiry=expiry,
+            option_type=option_type,
+        )
+
+        return BrokerResponse(
+            broker_name=self.broker_name,
+            operation="fetch_derivative_contracts",
+            payload=contracts,
+            response_meta={
+                "exchange": exchange.upper(),
+                "underlying": underlying.upper(),
+                "instrument_type": instrument_type.upper(),
+                "expiry": expiry,
+                "option_type": option_type.upper() if option_type else None,
+                "contract_count": len(contracts),
+            },
+        )
+
     def fetch_instruments_by_exchange(
         self,
         exchange: str,
@@ -395,32 +514,6 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
             operation="resolve_derivative_instruments",
             payload=resolved_instruments,
             response_meta={"instrument_count": len(resolved_instruments)},
-        )
-
-    def fetch_derivative_tokens(
-        self,
-        requests: tuple[DerivativeInstrumentRequest, ...],
-        context: BrokerRequestContext | None = None,
-    ) -> BrokerResponse:
-        resolved_response = self.resolve_derivative_instruments(
-            requests, context
-        )
-        tokens_by_exchange: dict[str, list[str]] = {}
-
-        for instrument in resolved_response.payload:
-            exchange_bucket = tokens_by_exchange.setdefault(
-                instrument["exchange"], []
-            )
-            exchange_bucket.append(instrument["token"])
-
-        return BrokerResponse(
-            broker_name=self.broker_name,
-            operation="fetch_derivative_tokens",
-            payload=tokens_by_exchange,
-            response_meta={
-                "exchange_count": len(tokens_by_exchange),
-                "instrument_count": len(resolved_response.payload),
-            },
         )
 
     def healthcheck(

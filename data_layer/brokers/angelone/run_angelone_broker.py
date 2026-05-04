@@ -106,16 +106,29 @@ def build_parser() -> argparse.ArgumentParser:
     derivative_resolve.add_argument("--strike", type=float)
     derivative_resolve.add_argument("--option-type")
 
-    derivative_tokens = subparsers.add_parser(
-        "derivative-tokens",
-        help="Resolve one derivative instrument and return its token",
+    derivative_contracts = subparsers.add_parser(
+        "derivative-contracts",
+        help="List derivative contracts for one underlying/expiry",
     )
-    derivative_tokens.add_argument("--exchange", required=True)
-    derivative_tokens.add_argument("--underlying", required=True)
-    derivative_tokens.add_argument("--instrument-type", required=True)
-    derivative_tokens.add_argument("--expiry", required=True)
-    derivative_tokens.add_argument("--strike", type=float)
-    derivative_tokens.add_argument("--option-type")
+    derivative_contracts.add_argument("--exchange", required=True)
+    derivative_contracts.add_argument("--underlying", required=True)
+    derivative_contracts.add_argument("--instrument-type", required=True)
+    derivative_contracts.add_argument("--expiry", required=True)
+    derivative_contracts.add_argument("--option-type")
+
+    derivative_history = subparsers.add_parser(
+        "derivative-history",
+        help="Fetch candle/history for one derivative contract",
+    )
+    derivative_history.add_argument("--exchange", required=True)
+    derivative_history.add_argument("--underlying", required=True)
+    derivative_history.add_argument("--instrument-type", required=True)
+    derivative_history.add_argument("--expiry", required=True)
+    derivative_history.add_argument("--interval", required=True)
+    derivative_history.add_argument("--from-date", required=True)
+    derivative_history.add_argument("--to-date", required=True)
+    derivative_history.add_argument("--strike", type=float)
+    derivative_history.add_argument("--option-type")
 
     return parser
 
@@ -226,9 +239,28 @@ def main() -> None:
             response = broker.resolve_derivative_instruments(
                 build_derivative_request(args)
             )
-        elif args.command == "derivative-tokens":
-            response = broker.fetch_derivative_tokens(
+        elif args.command == "derivative-contracts":
+            response = broker.fetch_derivative_contracts(
+                exchange=args.exchange,
+                underlying=args.underlying,
+                instrument_type=args.instrument_type,
+                expiry=args.expiry,
+                option_type=args.option_type,
+            )
+        elif args.command == "derivative-history":
+            resolved = broker.resolve_derivative_instruments(
                 build_derivative_request(args)
+            )
+            instrument = resolved.payload[0]
+            response = broker.fetch_candles(
+                CandleRequest(
+                    exchange=args.exchange,
+                    interval=args.interval,
+                    from_date=args.from_date,
+                    to_date=args.to_date,
+                    symbol=instrument["symbol"],
+                    instrument_token=instrument["token"],
+                )
             )
         else:
             raise ValueError("Unsupported command: {0}".format(args.command))
