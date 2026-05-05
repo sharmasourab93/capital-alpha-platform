@@ -37,3 +37,4 @@ Thumbs.db
 instance/config
 *logs/*
 *.logs
+*.log
