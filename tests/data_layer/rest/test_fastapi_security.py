@@ -65,7 +65,9 @@ def test_protected_route_requires_api_key(monkeypatch):
     security = _load_security_module(monkeypatch, REST_API_KEYS="secret-key")
 
     response = asyncio.run(
-        security.enforce_request_security(_request("/market/exchanges"))
+        security.enforce_request_security(
+            _request("/market/reference/exchanges")
+        )
     )
 
     assert response is not None
@@ -78,7 +80,7 @@ def test_valid_api_key_allows_route(monkeypatch):
     response = asyncio.run(
         security.enforce_request_security(
             _request(
-                "/market/exchanges",
+                "/market/reference/exchanges",
                 headers={"x-api-key": "secret-key"},
             )
         )
@@ -97,7 +99,7 @@ def test_scope_restriction_blocks_unauthorized_route(monkeypatch):
     response = asyncio.run(
         security.enforce_request_security(
             _request(
-                "/market/quotes",
+                "/market/cash/quotes",
                 method="POST",
                 headers={"x-api-key": "reference-key"},
             )
@@ -117,7 +119,7 @@ def test_trusted_host_policy_rejects_unlisted_host(monkeypatch):
     response = asyncio.run(
         security.enforce_request_security(
             _request(
-                "/market/exchanges",
+                "/market/reference/exchanges",
                 headers={"host": "evil.local"},
             )
         )
@@ -136,7 +138,7 @@ def test_cors_origin_policy_rejects_unlisted_origin(monkeypatch):
     response = asyncio.run(
         security.enforce_request_security(
             _request(
-                "/market/exchanges",
+                "/market/reference/exchanges",
                 headers={"origin": "https://blocked.example.com"},
             )
         )
@@ -155,7 +157,7 @@ def test_cors_preflight_returns_allow_headers_for_allowed_origin(monkeypatch):
     response = asyncio.run(
         security.enforce_request_security(
             _request(
-                "/market/exchanges",
+                "/market/reference/exchanges",
                 method="OPTIONS",
                 headers={
                     "origin": "https://allowed.example.com",
@@ -180,7 +182,7 @@ def test_rate_limit_returns_429_after_limit(monkeypatch):
         REST_RATE_LIMIT_PER_MINUTE="1",
     )
     request = _request(
-        "/market/exchanges",
+        "/market/reference/exchanges",
         headers={"x-api-key": "limited-key"},
     )
 
@@ -200,7 +202,7 @@ def test_request_guard_rejects_oversized_symbols_payload(monkeypatch):
 
     with pytest.raises(ValueError, match="symbols exceeds maximum"):
         security.validate_rest_request(
-            path="/market/quotes",
+            path="/market/cash/quotes",
             method="POST",
             query={},
             body={

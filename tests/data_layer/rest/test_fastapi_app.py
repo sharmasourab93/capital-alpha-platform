@@ -31,7 +31,7 @@ def test_market_instruments_uses_simple_public_query_params(
 
     assert response.status_code == 200
     assert json.loads(response.body) == {"data": []}
-    assert captured["path"] == "/market/instruments"
+    assert captured["path"] == "/market/reference/instruments"
     assert captured["method"] == "GET"
     assert captured["query"] == {
         "provider": "angelone",
@@ -66,7 +66,7 @@ def test_derivative_expiries_forwards_expected_query_params(
     )
 
     assert response.status_code == 200
-    assert captured["path"] == "/market/derivative-expiries"
+    assert captured["path"] == "/market/derivatives/expiries"
     assert captured["method"] == "GET"
     assert captured["query"] == {
         "provider": "angelone",
@@ -100,7 +100,7 @@ def test_derivative_underlyings_forwards_expected_query_params(
     )
 
     assert response.status_code == 200
-    assert captured["path"] == "/market/derivative-underlyings"
+    assert captured["path"] == "/market/derivatives/underlyings"
     assert captured["method"] == "GET"
     assert captured["query"] == {
         "provider": "angelone",
@@ -136,7 +136,7 @@ def test_derivative_strikes_forwards_expected_query_params(
     )
 
     assert response.status_code == 200
-    assert captured["path"] == "/market/derivative-strikes"
+    assert captured["path"] == "/market/derivatives/strikes"
     assert captured["method"] == "GET"
     assert captured["query"] == {
         "provider": "angelone",
@@ -175,7 +175,7 @@ def test_derivative_contracts_forwards_expected_query_params(
     )
 
     assert response.status_code == 200
-    assert captured["path"] == "/market/derivative-contracts"
+    assert captured["path"] == "/market/derivatives/contracts"
     assert captured["query"] == {
         "provider": "angelone",
         "exchange": "NFO",
@@ -234,4 +234,70 @@ def test_derivative_history_forwards_expected_body(
         "interval": "1d",
         "from": "2026-05-01 09:15",
         "to": "2026-05-04 15:30",
+    }
+
+
+def test_bse_listed_stocks_forwards_pagination_params(
+    monkeypatch,
+) -> None:
+    captured: dict = {}
+
+    def fake_handle_http_request(**kwargs):
+        captured.update(kwargs)
+        return 200, {"data": {"items": []}}
+
+    monkeypatch.setattr(
+        fastapi_app,
+        "handle_http_request",
+        fake_handle_http_request,
+    )
+    request = SimpleNamespace(headers={"x-request-id": "req-903"})
+
+    response = fastapi_app.bse_listed_stocks(
+        request=request,
+        provider="angelone",
+        offset=50,
+        limit=25,
+    )
+
+    assert response.status_code == 200
+    assert captured["path"] == "/market/cash/bse-listed-stocks"
+    assert captured["method"] == "GET"
+    assert captured["query"] == {
+        "provider": "angelone",
+        "offset": "50",
+        "limit": "25",
+    }
+
+
+def test_nse_listed_stocks_forwards_pagination_params(
+    monkeypatch,
+) -> None:
+    captured: dict = {}
+
+    def fake_handle_http_request(**kwargs):
+        captured.update(kwargs)
+        return 200, {"data": {"items": []}}
+
+    monkeypatch.setattr(
+        fastapi_app,
+        "handle_http_request",
+        fake_handle_http_request,
+    )
+    request = SimpleNamespace(headers={"x-request-id": "req-904"})
+
+    response = fastapi_app.nse_listed_stocks(
+        request=request,
+        provider="angelone",
+        offset=100,
+        limit=50,
+    )
+
+    assert response.status_code == 200
+    assert captured["path"] == "/market/cash/nse-listed-stocks"
+    assert captured["method"] == "GET"
+    assert captured["query"] == {
+        "provider": "angelone",
+        "offset": "100",
+        "limit": "50",
     }

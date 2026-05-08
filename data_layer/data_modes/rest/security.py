@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import hmac
+import json
+import os
 from collections import defaultdict, deque
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
-import hmac
-import json
-import os
 from threading import Lock
 from time import time
 from typing import Any
@@ -14,9 +14,11 @@ from typing import Any
 from fastapi import Request
 from fastapi.responses import JSONResponse, Response
 
+from data_layer.data_modes.rest.contracts import paths
+
 _EXEMPT_PATHS = frozenset(
     {
-        "/health",
+        paths.HEALTH,
         "/docs",
         "/redoc",
         "/openapi.json",
@@ -26,33 +28,16 @@ _EXEMPT_PATHS = frozenset(
 _ALL_SCOPES = frozenset(
     {
         "reference",
-        "discovery",
-        "market-data",
-        "resolution",
+        "cash",
+        "derivatives",
     }
 )
 _PATH_SCOPES = {
-    "/market/instruments": "reference",
-    "/market/exchanges": "reference",
-    "/market/instrument-types": "reference",
-    "/market/instruments-by-exchange": "reference",
-    "/market/exchange-symbol-name-map": "reference",
-    "/market/derivative-symbols": "reference",
-    "/market/derivative-underlyings": "discovery",
-    "/market/derivative-expiries": "discovery",
-    "/market/derivative-strikes": "discovery",
-    "/market/derivative-contracts": "discovery",
-    "/market/quotes": "market-data",
-    "/market/candles": "market-data",
-    "/market/derivatives/history": "market-data",
-    "/market/derivatives/resolve": "resolution",
+    **{path: "reference" for path in paths.REFERENCE_PATHS},
+    **{path: "cash" for path in paths.CASH_PATHS},
+    **{path: "derivatives" for path in paths.DERIVATIVES_PATHS},
 }
-_BODY_DATE_PATHS = frozenset(
-    {
-        "/market/candles",
-        "/market/derivatives/history",
-    }
-)
+_BODY_DATE_PATHS = paths.BODY_DATE_PATHS
 _TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M"
 
 
@@ -168,10 +153,12 @@ def validate_rest_request(
     payload = body or {}
     params = query or {}
 
-    if path == "/market/quotes" and method == "POST":
-        _validate_symbols(payload.get("symbols"), settings.max_symbols_per_request)
+    if path == paths.CASH_QUOTES and method == "POST":
+        _validate_symbols(
+            payload.get("symbols"), settings.max_symbols_per_request
+        )
 
-    if path == "/market/derivatives/resolve" and method == "POST":
+    if path == paths.DERIVATIVES_RESOLVE and method == "POST":
         requests = payload.get("requests") or []
         if len(requests) > settings.max_resolve_requests:
             raise ValueError(
@@ -187,7 +174,19 @@ def validate_rest_request(
             max_history_days=settings.max_history_days,
         )
 
-    if path == "/market/exchange-symbol-name-map" and method == "GET":
+    if path == paths.REFERENCE_EXCHANGE_SYMBOL_NAME_MAP and method == "GET":
+        limit = params.get("limit")
+        if limit is not None and int(limit) > 500:
+            raise ValueError("limit exceeds maximum allowed size of 500")
+
+    if (
+        path
+        in {
+            paths.CASH_NSE_LISTED_STOCKS,
+            paths.CASH_BSE_LISTED_STOCKS,
+        }
+        and method == "GET"
+    ):
         limit = params.get("limit")
         if limit is not None and int(limit) > 500:
             raise ValueError("limit exceeds maximum allowed size of 500")
@@ -208,9 +207,8 @@ def _handle_origin_policy(
             "Origin is not allowed.",
         )
 
-    if (
-        request.method == "OPTIONS"
-        and request.headers.get("access-control-request-method")
+    if request.method == "OPTIONS" and request.headers.get(
+        "access-control-request-method"
     ):
         return Response(
             status_code=204,
@@ -280,7 +278,9 @@ def _match_api_key(candidate: str, valid_keys: Iterable[str]) -> str | None:
     return None
 
 
-def _load_api_key_scopes(api_keys: tuple[str, ...]) -> dict[str, frozenset[str]]:
+def _load_api_key_scopes(
+    api_keys: tuple[str, ...],
+) -> dict[str, frozenset[str]]:
     raw_value = os.getenv("REST_API_KEY_SCOPES", "").strip()
     default_mapping = {api_key: _ALL_SCOPES for api_key in api_keys}
     if not raw_value:

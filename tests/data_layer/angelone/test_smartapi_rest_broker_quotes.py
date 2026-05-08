@@ -123,6 +123,57 @@ def test_fetch_exchange_symbol_name_map_returns_paged_exchange_rows(
     ]
 
 
+def test_fetch_listed_equities_returns_compact_nse_equity_list(
+    broker_module,
+    mock_client,
+    sample_scrip_master_rows: list[dict],
+) -> None:
+    broker = broker_module.AngelOneSmartApiRestBroker(client=mock_client)
+    broker.market_data = broker_module.AngelInstrumentMaster.from_rows(
+        sample_scrip_master_rows
+    )
+
+    response = broker.fetch_listed_equities(
+        exchange="NSE",
+        offset=1,
+        limit=1,
+    )
+
+    assert response.operation == "fetch_listed_equities"
+    assert response.response_meta["exchange"] == "NSE"
+    assert response.response_meta["offset"] == 1
+    assert response.response_meta["limit"] == 1
+    assert response.response_meta["instrument_count"] == 1
+    assert response.response_meta["instrument_total"] == 3
+    assert response.payload["items"] == [
+        {
+            "symbol": "SBIN",
+            "name": "STATE BANK OF INDIA",
+        }
+    ]
+
+
+def test_fetch_stock_instruments_by_name_returns_full_metadata(
+    broker_module,
+    mock_client,
+    sample_scrip_master_rows: list[dict],
+) -> None:
+    broker = broker_module.AngelOneSmartApiRestBroker(client=mock_client)
+    broker.market_data = broker_module.AngelInstrumentMaster.from_rows(
+        sample_scrip_master_rows
+    )
+
+    response = broker.fetch_stock_instruments_by_name(
+        exchange="NSE",
+        name="STATE BANK OF INDIA",
+    )
+
+    assert response.operation == "fetch_stock_instruments_by_name"
+    assert response.response_meta["stock_count"] == 1
+    assert response.payload[0]["token"] == "3045"
+    assert response.payload[0]["name"] == "STATE BANK OF INDIA"
+
+
 def test_fetch_derivative_expiries_returns_sorted_expiries(
     broker_module,
     mock_client,

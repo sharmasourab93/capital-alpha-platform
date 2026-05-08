@@ -9,14 +9,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:  # pragma: no cover
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from data_layer.abs import (
-    BrokerRequestContext,
-    BrokerResponse,
-    CandleRequest,
-    DerivativeInstrumentRequest,
-    InstrumentRequest,
-    QuoteRequest,
-)
+from data_layer.abs import BrokerRequestContext, BrokerResponse
+from data_layer.data_modes.rest import dispatch
+from data_layer.data_modes.rest.contracts import paths
+from data_layer.data_modes.rest.dispatch.common import require_value
 
 
 class RestRouter:
@@ -29,29 +25,44 @@ class RestRouter:
         self._route_handlers: dict[
             str, dict[str, Callable[..., BrokerResponse | dict]]
         ] = {
-            "/health": {"GET": self._health},
-            "/market/instruments": {"GET": self._instruments},
-            "/market/exchanges": {"GET": self._exchanges},
-            "/market/instrument-types": {"GET": self._instrument_types},
-            "/market/instruments-by-exchange": {
-                "GET": self._instruments_by_exchange
+            paths.HEALTH: {"GET": self._health},
+            paths.REFERENCE_INSTRUMENTS: {"GET": dispatch.fetch_instruments},
+            paths.REFERENCE_EXCHANGES: {"GET": dispatch.fetch_exchanges},
+            paths.REFERENCE_INSTRUMENT_TYPES: {
+                "GET": dispatch.fetch_instrument_types
             },
-            "/market/exchange-symbol-name-map": {
-                "GET": self._exchange_symbol_name_map
+            paths.REFERENCE_EXCHANGE_SYMBOL_NAME_MAP: {
+                "GET": dispatch.fetch_exchange_symbol_name_map
             },
-            "/market/derivative-symbols": {"GET": self._derivative_symbols},
-            "/market/derivative-underlyings": {
-                "GET": self._derivative_underlyings
+            paths.CASH_NSE_LISTED_STOCKS: {
+                "GET": dispatch.fetch_nse_listed_stocks
             },
-            "/market/derivative-expiries": {"GET": self._derivative_expiries},
-            "/market/derivative-strikes": {"GET": self._derivative_strikes},
-            "/market/derivative-contracts": {
-                "GET": self._derivative_contracts
+            paths.CASH_BSE_LISTED_STOCKS: {
+                "GET": dispatch.fetch_bse_listed_stocks
             },
-            "/market/quotes": {"POST": self._quotes},
-            "/market/candles": {"POST": self._candles},
-            "/market/derivatives/history": {"POST": self._derivative_history},
-            "/market/derivatives/resolve": {"POST": self._resolve_derivative},
+            paths.DERIVATIVES_SYMBOLS: {
+                "GET": dispatch.fetch_derivative_symbols
+            },
+            paths.DERIVATIVES_UNDERLYINGS: {
+                "GET": dispatch.fetch_derivative_underlyings
+            },
+            paths.DERIVATIVES_EXPIRIES: {
+                "GET": dispatch.fetch_derivative_expiries
+            },
+            paths.DERIVATIVES_STRIKES: {
+                "GET": dispatch.fetch_derivative_strikes
+            },
+            paths.DERIVATIVES_CONTRACTS: {
+                "GET": dispatch.fetch_derivative_contracts
+            },
+            paths.CASH_QUOTES: {"POST": dispatch.fetch_quotes},
+            paths.CASH_CANDLES: {"POST": dispatch.fetch_candles},
+            paths.DERIVATIVES_HISTORY: {
+                "POST": dispatch.fetch_derivative_history
+            },
+            paths.DERIVATIVES_RESOLVE: {
+                "POST": dispatch.resolve_derivative_instruments
+            },
         }
 
     def handle(
@@ -78,11 +89,11 @@ class RestRouter:
                 ),
             )
 
-        if path == "/health":
+        if path == paths.HEALTH:
             return 200, {"data": handler()}
 
         source = body if method == "POST" else query
-        broker_name = self._require(source, "provider").lower()
+        broker_name = require_value(source, "provider").lower()
         broker = self._resolve_broker(broker_name)
         context = BrokerRequestContext(request_id=request_id)
         started_at = perf_counter()
@@ -97,223 +108,6 @@ class RestRouter:
 
     def _health(self) -> dict:
         return {"status": "ok", "mode": "rest"}
-
-    def _quotes(self, *, broker, data: dict, context: BrokerRequestContext):
-        mode = data.get("mode") or "FULL"
-        symbols = self._listify(data.get("symbols"))
-        return broker.fetch_quotes(
-            QuoteRequest(
-                mode=mode,
-                exchange=self._require(data, "exchange").upper(),
-                symbols=tuple(symbols),
-            ),
-            context=context,
-        )
-
-    def _candles(self, *, broker, data: dict, context: BrokerRequestContext):
-        exchange = self._require(data, "exchange").upper()
-        symbol = self._require(data, "symbol")
-        instrument_token = broker._resolve_symbol_tokens((symbol,), exchange)[
-            0
-        ]
-
-        return broker.fetch_candles(
-            CandleRequest(
-                exchange=exchange,
-                interval=self._require(data, "interval"),
-                from_date=self._require(data, "from"),
-                to_date=self._require(data, "to"),
-                symbol=symbol,
-                instrument_token=instrument_token,
-            ),
-            context=context,
-        )
-
-    def _instruments(
-        self, *, broker, data: dict, context: BrokerRequestContext
-    ):
-        market = data.get("market") or data.get("exchange")
-        query = data.get("query")
-        return broker.fetch_instruments(
-            InstrumentRequest(
-                exchange=self._require({"market": market}, "market").upper(),
-                query=self._require({"query": query}, "query"),
-            ),
-            context=context,
-        )
-
-    def _exchanges(self, *, broker, data: dict, context: BrokerRequestContext):
-        return broker.fetch_exchanges(context=context)
-
-    def _instrument_types(
-        self,
-        *,
-        broker,
-        data: dict,
-        context: BrokerRequestContext,
-    ):
-        return broker.fetch_instrument_types(
-            exchange=data.get("exchange"),
-            context=context,
-        )
-
-    def _instruments_by_exchange(
-        self,
-        *,
-        broker,
-        data: dict,
-        context: BrokerRequestContext,
-    ):
-        return broker.fetch_instruments_by_exchange(
-            exchange=self._require(data, "exchange").upper(),
-            context=context,
-        )
-
-    def _exchange_symbol_name_map(
-        self,
-        *,
-        broker,
-        data: dict,
-        context: BrokerRequestContext,
-    ):
-        return broker.fetch_exchange_symbol_name_map(
-            exchange=data.get("exchange"),
-            query=data.get("query"),
-            offset=self._optional_int(data.get("offset"), default=0),
-            limit=self._optional_int(data.get("limit"), default=100),
-            context=context,
-        )
-
-    def _derivative_symbols(
-        self,
-        *,
-        broker,
-        data: dict,
-        context: BrokerRequestContext,
-    ):
-        return broker.fetch_derivative_symbols(
-            exchange=data.get("exchange"),
-            instrument_type=data.get("instrument_type"),
-            context=context,
-        )
-
-    def _derivative_expiries(
-        self,
-        *,
-        broker,
-        data: dict,
-        context: BrokerRequestContext,
-    ):
-        return broker.fetch_derivative_expiries(
-            exchange=self._require(data, "exchange").upper(),
-            underlying=self._require(data, "underlying"),
-            instrument_type=self._require(data, "instrument_type"),
-            context=context,
-        )
-
-    def _derivative_contracts(
-        self,
-        *,
-        broker,
-        data: dict,
-        context: BrokerRequestContext,
-    ):
-        return broker.fetch_derivative_contracts(
-            exchange=self._require(data, "exchange").upper(),
-            underlying=self._require(data, "underlying"),
-            instrument_type=self._require(data, "instrument_type"),
-            expiry=self._require(data, "expiry"),
-            option_type=data.get("option_type"),
-            context=context,
-        )
-
-    def _derivative_strikes(
-        self,
-        *,
-        broker,
-        data: dict,
-        context: BrokerRequestContext,
-    ):
-        return broker.fetch_derivative_strikes(
-            exchange=self._require(data, "exchange").upper(),
-            underlying=self._require(data, "underlying"),
-            instrument_type=self._require(data, "instrument_type"),
-            expiry=self._require(data, "expiry"),
-            option_type=data.get("option_type"),
-            context=context,
-        )
-
-    def _derivative_underlyings(
-        self,
-        *,
-        broker,
-        data: dict,
-        context: BrokerRequestContext,
-    ):
-        return broker.fetch_derivative_underlyings(
-            exchange=data.get("exchange"),
-            instrument_type=data.get("instrument_type"),
-            context=context,
-        )
-
-    def _derivative_history(
-        self,
-        *,
-        broker,
-        data: dict,
-        context: BrokerRequestContext,
-    ):
-        derivative_request = self._derivative_request(data)
-        resolved_response = broker.resolve_derivative_instruments(
-            requests=(derivative_request,),
-            context=context,
-        )
-        instrument = resolved_response.payload[0]
-
-        return broker.fetch_candles(
-            CandleRequest(
-                exchange=self._require(data, "exchange").upper(),
-                interval=self._require(data, "interval"),
-                from_date=self._require(data, "from"),
-                to_date=self._require(data, "to"),
-                symbol=str(instrument["symbol"]),
-                instrument_token=str(instrument["token"]),
-            ),
-            context=context,
-        )
-
-    def _resolve_derivative(
-        self,
-        *,
-        broker,
-        data: dict,
-        context: BrokerRequestContext,
-    ):
-        requests = self._derivative_requests(data)
-        return broker.resolve_derivative_instruments(
-            requests=requests,
-            context=context,
-        )
-
-    def _derivative_requests(
-        self, data: dict
-    ) -> tuple[DerivativeInstrumentRequest, ...]:
-        request_items = data.get("requests")
-        if request_items:
-            return tuple(
-                self._derivative_request(item) for item in request_items
-            )
-        return (self._derivative_request(data),)
-
-    def _derivative_request(self, data: dict) -> DerivativeInstrumentRequest:
-        return DerivativeInstrumentRequest(
-            exchange=self._require(data, "exchange").upper(),
-            underlying=self._require(data, "underlying"),
-            instrument_type=self._require(data, "instrument_type"),
-            expiry=self._require(data, "expiry"),
-            strike=self._optional_float(data.get("strike")),
-            option_type=data.get("option_type"),
-        )
 
     def _resolve_broker(self, name: str):
         cached_broker = self._broker_instances.get(name)
@@ -368,40 +162,3 @@ class RestRouter:
                 "details": details or [],
             }
         }
-
-    @staticmethod
-    def _require(data: dict, key: str) -> str:
-        value = data.get(key)
-        if value is None:
-            raise ValueError("{0} is required".format(key))
-        if isinstance(value, str):
-            value = value.strip()
-        if value == "":
-            raise ValueError("{0} is required".format(key))
-        return value
-
-    @staticmethod
-    def _listify(value) -> list[str]:
-        if value is None:
-            return []
-        if isinstance(value, list):
-            return [str(item).strip() for item in value if str(item).strip()]
-        if isinstance(value, str):
-            return [item.strip() for item in value.split(",") if item.strip()]
-        return [str(value).strip()]
-
-    @staticmethod
-    def _optional_float(value) -> float | None:
-        if value is None:
-            return None
-        if isinstance(value, str) and not value.strip():
-            return None
-        return float(value)
-
-    @staticmethod
-    def _optional_int(value, *, default: int) -> int:
-        if value is None:
-            return default
-        if isinstance(value, str) and not value.strip():
-            return default
-        return int(value)

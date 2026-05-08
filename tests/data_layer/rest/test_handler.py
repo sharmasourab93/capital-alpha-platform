@@ -24,7 +24,7 @@ def test_lambda_handler_forwards_api_gateway_v2_event(
 
     event = {
         "headers": {"x-request-id": "header-request-id"},
-        "rawPath": "/market/quotes",
+        "rawPath": "/market/cash/quotes",
         "requestContext": {
             "requestId": "context-request-id",
             "http": {"method": "POST"},
@@ -36,7 +36,7 @@ def test_lambda_handler_forwards_api_gateway_v2_event(
     response = handler.lambda_handler(event)
 
     assert captured == {
-        "path": "/market/quotes",
+        "path": "/market/cash/quotes",
         "method": "POST",
         "query": {"provider": "angelone"},
         "body": {"exchange": "NSE", "symbols": ["SBIN"]},
@@ -61,7 +61,7 @@ def test_lambda_handler_falls_back_to_api_gateway_v1_fields(
     )
 
     event = {
-        "path": "/market/candles",
+        "path": "/market/cash/candles",
         "httpMethod": "POST",
         "requestContext": {"requestId": "gateway-v1-request-id"},
         "queryStringParameters": None,
@@ -70,7 +70,7 @@ def test_lambda_handler_falls_back_to_api_gateway_v1_fields(
 
     response = handler.lambda_handler(event)
 
-    assert captured["path"] == "/market/candles"
+    assert captured["path"] == "/market/cash/candles"
     assert captured["method"] == "POST"
     assert captured["query"] == {}
     assert captured["body"] == {"exchange": "NSE", "symbol": "SBIN"}

@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import os
 import time
 from dataclasses import asdict
 
-import pyotp
 from SmartApi import SmartConnect
 
 from data_layer.abs import (
@@ -20,6 +18,19 @@ from data_layer.abs import (
 
 from .errors import AngelOneSmartApiRestBrokerError, broker_error_handler
 from .instrument_master import AngelInstrumentMaster
+from .smartapi import (
+    SmartApiCredentials,
+    SmartApiSessionManager,
+    SmartApiTransport,
+)
+from .smartapi.utils import (
+    chunk_sequence,
+    map_interval,
+    require_symbols,
+    require_tokens,
+    required_env,
+    validate_bulk_chunk_size,
+)
 
 
 class AngelOneSmartApiRestBroker(MarketDataBroker):
@@ -37,38 +48,44 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
         password: str | None = None,
         totp_secret: str | None = None,
     ) -> None:
-        self.api_key = _required_env("ANGELONE_API_KEY")
-        self.client_code = client_code or _required_env("ANGELONE_CLIENTCODE")
-        self.password = password or _required_env("ANGELONE_PASSWORD")
-        self.totp_secret = totp_secret or _required_env("ANGELONE_TOTP_SECRET")
-        self.client = client or SmartConnect(self.api_key)
-        self.session = None
+        credentials = SmartApiCredentials(
+            api_key=required_env("ANGELONE_API_KEY"),
+            client_code=client_code or required_env("ANGELONE_CLIENTCODE"),
+            password=password or required_env("ANGELONE_PASSWORD"),
+            totp_secret=totp_secret or required_env("ANGELONE_TOTP_SECRET"),
+        )
+        resolved_client = client or SmartConnect(credentials.api_key)
+
+        self.api_key = credentials.api_key
+        self.client_code = credentials.client_code
+        self.password = credentials.password
+        self.totp_secret = credentials.totp_secret
+
+        self._session_manager = SmartApiSessionManager(
+            client=resolved_client,
+            credentials=credentials,
+        )
+        self._transport = SmartApiTransport(resolved_client)
         self.market_data: AngelInstrumentMaster | None = None
+
+    @property
+    def client(self) -> SmartConnect:
+        return self._session_manager.client
+
+    @property
+    def session(self) -> dict | None:
+        return self._session_manager.session
 
     @broker_error_handler("Angel One authentication failed")
     def authenticate(self) -> dict:
-        totp = pyotp.TOTP(self.totp_secret).now()
-        session = self.client.generateSession(
-            self.client_code,
-            self.password,
-            totp,
-        )
-
-        if not session or "data" not in session:
-            raise AngelOneSmartApiRestBrokerError(
-                "Angel One authentication returned invalid session",
-                {"session": session},
-            )
-
-        self.session = session
-        return session
+        return self._session_manager.authenticate()
 
     def fetch_quotes(
         self,
         request: QuoteRequest,
         context: BrokerRequestContext | None = None,
     ) -> BrokerResponse:
-        symbols = self._require_symbols(request.symbols, "quotes")
+        symbols = require_symbols(request.symbols, "quotes")
         tokens = self._resolve_symbol_tokens(symbols, request.exchange)
         return self.fetch_quotes_by_tokens(
             exchange=request.exchange,
@@ -86,26 +103,23 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
         context: BrokerRequestContext | None = None,
         symbols: tuple[str, ...] | None = None,
     ) -> BrokerResponse:
-        tokens = self._require_tokens(instrument_tokens, "quotes_by_tokens")
+        del context
+        normalized_exchange = exchange.upper()
+        tokens = require_tokens(instrument_tokens, "quotes_by_tokens")
         payload = {
             "mode": mode,
-            "exchangeTokens": {
-                exchange.upper(): list(tokens),
-            },
+            "exchangeTokens": {normalized_exchange: list(tokens)},
         }
 
         self._ensure_authenticated()
         raw = self._call_market_data(payload)
-        return BrokerResponse(
-            broker_name=self.broker_name,
+        return self._response(
             operation="fetch_quotes_by_tokens",
             payload=raw,
-            response_meta={
-                "exchange": exchange.upper(),
-                "symbols": symbols or (),
-                "tokens": list(tokens),
-                "mode": mode,
-            },
+            exchange=normalized_exchange,
+            symbols=symbols or (),
+            tokens=list(tokens),
+            mode=mode,
         )
 
     def fetch_bulk_quotes(
@@ -115,7 +129,7 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
         chunk_size: int = 50,
         pause_seconds: float = 1.05,
     ) -> BrokerResponse:
-        symbols = self._require_symbols(request.symbols, "bulk_quotes")
+        symbols = require_symbols(request.symbols, "bulk_quotes")
         tokens = self._resolve_symbol_tokens(symbols, request.exchange)
         return self.fetch_bulk_quotes_by_tokens(
             exchange=request.exchange,
@@ -137,13 +151,11 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
         chunk_size: int = 50,
         pause_seconds: float = 1.05,
     ) -> BrokerResponse:
-        tokens = self._require_tokens(
-            instrument_tokens,
-            "bulk_quotes_by_tokens",
-        )
+        del context
         normalized_exchange = exchange.upper()
-        normalized_chunk_size = self._validate_bulk_chunk_size(chunk_size)
-        token_chunks = list(_chunk_sequence(tokens, normalized_chunk_size))
+        tokens = require_tokens(instrument_tokens, "bulk_quotes_by_tokens")
+        normalized_chunk_size = validate_bulk_chunk_size(chunk_size)
+        token_chunks = list(chunk_sequence(tokens, normalized_chunk_size))
         chunk_responses: list[dict] = []
         merged_data: list[dict] = []
 
@@ -170,24 +182,19 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
             if pause_seconds > 0 and index < len(token_chunks) - 1:
                 time.sleep(pause_seconds)
 
-        payload = self._merge_bulk_quote_payloads(
-            chunk_responses,
-            merged_data,
-        )
-
-        return BrokerResponse(
-            broker_name=self.broker_name,
+        return self._response(
             operation="fetch_bulk_quotes",
-            payload=payload,
-            response_meta={
-                "exchange": normalized_exchange,
-                "symbols": symbols or (),
-                "tokens": list(tokens),
-                "mode": mode,
-                "chunk_size": normalized_chunk_size,
-                "chunk_count": len(token_chunks),
-                "rate_limit_pause_seconds": pause_seconds,
-            },
+            payload=self._merge_bulk_quote_payloads(
+                chunk_responses,
+                merged_data,
+            ),
+            exchange=normalized_exchange,
+            symbols=symbols or (),
+            tokens=list(tokens),
+            mode=mode,
+            chunk_size=normalized_chunk_size,
+            chunk_count=len(token_chunks),
+            rate_limit_pause_seconds=pause_seconds,
         )
 
     @broker_error_handler(
@@ -205,6 +212,7 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
         request: CandleRequest,
         context: BrokerRequestContext | None = None,
     ) -> BrokerResponse:
+        del context
         if not request.instrument_token:
             raise AngelOneSmartApiRestBrokerError(
                 "Angel One candles require instrument_token"
@@ -213,24 +221,20 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
         payload = {
             "exchange": request.exchange,
             "symboltoken": request.instrument_token,
-            "interval": self._map_interval(request.interval),
+            "interval": map_interval(request.interval),
             "fromdate": request.from_date,
             "todate": request.to_date,
         }
 
         self._ensure_authenticated()
-        raw = self.client.getCandleData(payload)
-
-        return BrokerResponse(
-            broker_name=self.broker_name,
+        raw = self._transport.get_candle_data(payload)
+        return self._response(
             operation="fetch_candles",
             payload=raw,
-            response_meta={
-                "exchange": request.exchange,
-                "interval": request.interval,
-                "instrument_token": request.instrument_token,
-                "symbol": request.symbol,
-            },
+            exchange=request.exchange,
+            interval=request.interval,
+            instrument_token=request.instrument_token,
+            symbol=request.symbol,
         )
 
     @broker_error_handler(
@@ -245,25 +249,19 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
         request: InstrumentRequest,
         context: BrokerRequestContext | None = None,
     ) -> BrokerResponse:
+        del context
         if not request.query:
             raise AngelOneSmartApiRestBrokerError(
                 "Angel One instrument search requires query"
             )
 
         self._ensure_authenticated()
-        raw = self.client.searchScrip(
-            request.exchange,
-            request.query,
-        )
-
-        return BrokerResponse(
-            broker_name=self.broker_name,
+        raw = self._transport.search_scrip(request.exchange, request.query)
+        return self._response(
             operation="fetch_instruments",
             payload=raw,
-            response_meta={
-                "exchange": request.exchange,
-                "query": request.query,
-            },
+            exchange=request.exchange,
+            query=request.query,
         )
 
     def fetch_exchange_symbol_name_map(
@@ -274,6 +272,7 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
         limit: int = 100,
         context: BrokerRequestContext | None = None,
     ) -> BrokerResponse:
+        del context
         market_data = self._get_market_data()
         if exchange:
             payload = market_data.get_symbol_name_page(
@@ -282,52 +281,45 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
                 offset=offset,
                 limit=limit,
             )
-            response_meta = {
-                "mode": "page",
-                "exchange": exchange.upper(),
-                "query": query,
-                "offset": offset,
-                "limit": limit,
-            }
-        else:
-            counts_by_exchange = (
-                market_data.get_symbol_name_counts_by_exchange()
+            return self._response(
+                operation="fetch_exchange_symbol_name_map",
+                payload=payload,
+                mode="page",
+                exchange=exchange.upper(),
+                query=query,
+                offset=offset,
+                limit=limit,
             )
-            payload = {
-                "exchanges": [
-                    {
-                        "exchange": exchange_name,
-                        "symbol_count": symbol_count,
-                    }
-                    for exchange_name, symbol_count in sorted(
-                        counts_by_exchange.items()
-                    )
-                ]
-            }
-            response_meta = {
-                "mode": "summary",
-                "exchange_count": len(counts_by_exchange),
-            }
 
-        return BrokerResponse(
-            broker_name=self.broker_name,
+        counts_by_exchange = market_data.get_symbol_name_counts_by_exchange()
+        payload = {
+            "exchanges": [
+                {
+                    "exchange": exchange_name,
+                    "symbol_count": symbol_count,
+                }
+                for exchange_name, symbol_count in sorted(
+                    counts_by_exchange.items()
+                )
+            ]
+        }
+        return self._response(
             operation="fetch_exchange_symbol_name_map",
             payload=payload,
-            response_meta=response_meta,
+            mode="summary",
+            exchange_count=len(counts_by_exchange),
         )
 
     def fetch_exchanges(
         self,
         context: BrokerRequestContext | None = None,
     ) -> BrokerResponse:
-        market_data = self._get_market_data()
-        exchanges = market_data.get_exchanges()
-
-        return BrokerResponse(
-            broker_name=self.broker_name,
+        del context
+        exchanges = self._get_market_data().get_exchanges()
+        return self._response(
             operation="fetch_exchanges",
             payload=exchanges,
-            response_meta={"exchange_count": len(exchanges)},
+            exchange_count=len(exchanges),
         )
 
     def fetch_instrument_types(
@@ -335,17 +327,88 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
         exchange: str | None = None,
         context: BrokerRequestContext | None = None,
     ) -> BrokerResponse:
-        market_data = self._get_market_data()
-        instrument_types = market_data.get_instrument_types(exchange)
-
-        return BrokerResponse(
-            broker_name=self.broker_name,
+        del context
+        instrument_types = self._get_market_data().get_instrument_types(
+            exchange
+        )
+        return self._response(
             operation="fetch_instrument_types",
             payload=instrument_types,
-            response_meta={
-                "exchange": exchange.upper() if exchange else None,
-                "instrument_type_count": len(instrument_types),
-            },
+            exchange=exchange.upper() if exchange else None,
+            instrument_type_count=len(instrument_types),
+        )
+
+    def fetch_listed_equities(
+        self,
+        exchange: str,
+        offset: int = 0,
+        limit: int = 100,
+        context: BrokerRequestContext | None = None,
+    ) -> BrokerResponse:
+        del context
+        payload = self._get_market_data().get_listed_equities(
+            exchange,
+            offset=offset,
+            limit=limit,
+        )
+        return self._response(
+            operation="fetch_listed_equities",
+            payload=payload,
+            exchange=exchange.upper(),
+            offset=offset,
+            limit=limit,
+            instrument_count=payload["count"],
+            instrument_total=payload["total"],
+        )
+
+    def fetch_stock_names(
+        self,
+        exchange: str,
+        context: BrokerRequestContext | None = None,
+    ) -> BrokerResponse:
+        del context
+        names = self._get_market_data().get_stock_names(exchange)
+        return self._response(
+            operation="fetch_stock_names",
+            payload=names,
+            exchange=exchange.upper(),
+            stock_count=len(names),
+        )
+
+    def fetch_stock_instruments(
+        self,
+        exchange: str,
+        context: BrokerRequestContext | None = None,
+    ) -> BrokerResponse:
+        del context
+        instruments = self._get_market_data().get_stock_instruments(exchange)
+        return self._response(
+            operation="fetch_stock_instruments",
+            payload=[instrument.as_dict() for instrument in instruments],
+            exchange=exchange.upper(),
+            stock_count=len(instruments),
+        )
+
+    def fetch_stock_instruments_by_name(
+        self,
+        *,
+        exchange: str,
+        name: str,
+        context: BrokerRequestContext | None = None,
+    ) -> BrokerResponse:
+        del context
+        instruments = (
+            self._get_market_data().resolve_equity_instruments_by_name(
+                exchange,
+                name,
+            )
+        )
+        return self._response(
+            operation="fetch_stock_instruments_by_name",
+            payload=[instrument.as_dict() for instrument in instruments],
+            exchange=exchange.upper(),
+            name=name,
+            stock_count=len(instruments),
         )
 
     def fetch_derivative_symbols(
@@ -354,23 +417,72 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
         instrument_type: str | None = None,
         context: BrokerRequestContext | None = None,
     ) -> BrokerResponse:
-        market_data = self._get_market_data()
-        derivative_symbols = market_data.get_derivative_symbols(
+        del context
+        derivative_symbols = self._get_market_data().get_derivative_symbols(
             exchange=exchange,
             instrument_type=instrument_type,
         )
-
-        return BrokerResponse(
-            broker_name=self.broker_name,
+        return self._response(
             operation="fetch_derivative_symbols",
             payload=derivative_symbols,
-            response_meta={
-                "exchange": exchange.upper() if exchange else None,
-                "instrument_type": (
-                    instrument_type.upper() if instrument_type else None
-                ),
-                "exchange_count": len(derivative_symbols),
-            },
+            exchange=exchange.upper() if exchange else None,
+            instrument_type=(
+                instrument_type.upper() if instrument_type else None
+            ),
+            exchange_count=len(derivative_symbols),
+        )
+
+    def fetch_derivative_underlyings(
+        self,
+        *,
+        exchange: str | None = None,
+        instrument_type: str | None = None,
+        context: BrokerRequestContext | None = None,
+    ) -> BrokerResponse:
+        del context
+        derivative_underlyings = (
+            self._get_market_data().get_derivative_underlyings(
+                exchange=exchange,
+                instrument_type=instrument_type,
+            )
+        )
+        return self._response(
+            operation="fetch_derivative_underlyings",
+            payload=derivative_underlyings,
+            exchange=exchange.upper() if exchange else None,
+            instrument_type=(
+                instrument_type.upper() if instrument_type else None
+            ),
+            exchange_count=len(derivative_underlyings),
+        )
+
+    def fetch_derivative_market_catalog(
+        self,
+        *,
+        exchange: str,
+        context: BrokerRequestContext | None = None,
+    ) -> BrokerResponse:
+        del context
+        catalog = self._get_market_data().get_derivative_catalog(exchange)
+        if catalog is None:
+            payload = None
+            exchange_count = 0
+        else:
+            payload = {
+                "exchange": catalog.exchange,
+                "instrument_types": {
+                    instrument_type: list(underlyings)
+                    for instrument_type, underlyings in sorted(
+                        catalog.underlyings_by_instrument_type.items()
+                    )
+                },
+            }
+            exchange_count = len(catalog.families_by_instrument_type)
+        return self._response(
+            operation="fetch_derivative_market_catalog",
+            payload=payload,
+            exchange=exchange.upper(),
+            instrument_type_count=exchange_count,
         )
 
     def fetch_derivative_expiries(
@@ -381,49 +493,19 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
         instrument_type: str,
         context: BrokerRequestContext | None = None,
     ) -> BrokerResponse:
-        market_data = self._get_market_data()
-        expiries = market_data.get_derivative_expiries(
+        del context
+        expiries = self._get_market_data().get_derivative_expiries(
             exchange=exchange,
             underlying=underlying,
             instrument_type=instrument_type,
         )
-
-        return BrokerResponse(
-            broker_name=self.broker_name,
+        return self._response(
             operation="fetch_derivative_expiries",
             payload=expiries,
-            response_meta={
-                "exchange": exchange.upper(),
-                "underlying": underlying.upper(),
-                "instrument_type": instrument_type.upper(),
-                "expiry_count": len(expiries),
-            },
-        )
-
-    def fetch_derivative_underlyings(
-        self,
-        *,
-        exchange: str | None = None,
-        instrument_type: str | None = None,
-        context: BrokerRequestContext | None = None,
-    ) -> BrokerResponse:
-        market_data = self._get_market_data()
-        derivative_underlyings = market_data.get_derivative_underlyings(
-            exchange=exchange,
-            instrument_type=instrument_type,
-        )
-
-        return BrokerResponse(
-            broker_name=self.broker_name,
-            operation="fetch_derivative_underlyings",
-            payload=derivative_underlyings,
-            response_meta={
-                "exchange": exchange.upper() if exchange else None,
-                "instrument_type": (
-                    instrument_type.upper() if instrument_type else None
-                ),
-                "exchange_count": len(derivative_underlyings),
-            },
+            exchange=exchange.upper(),
+            underlying=underlying.upper(),
+            instrument_type=instrument_type.upper(),
+            expiry_count=len(expiries),
         )
 
     def fetch_derivative_contracts(
@@ -436,27 +518,23 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
         option_type: str | None = None,
         context: BrokerRequestContext | None = None,
     ) -> BrokerResponse:
-        market_data = self._get_market_data()
-        contracts = market_data.get_derivative_contracts(
+        del context
+        contracts = self._get_market_data().get_derivative_contracts(
             exchange=exchange,
             underlying=underlying,
             instrument_type=instrument_type,
             expiry=expiry,
             option_type=option_type,
         )
-
-        return BrokerResponse(
-            broker_name=self.broker_name,
+        return self._response(
             operation="fetch_derivative_contracts",
             payload=contracts,
-            response_meta={
-                "exchange": exchange.upper(),
-                "underlying": underlying.upper(),
-                "instrument_type": instrument_type.upper(),
-                "expiry": expiry,
-                "option_type": option_type.upper() if option_type else None,
-                "contract_count": len(contracts),
-            },
+            exchange=exchange.upper(),
+            underlying=underlying.upper(),
+            instrument_type=instrument_type.upper(),
+            expiry=expiry,
+            option_type=option_type.upper() if option_type else None,
+            contract_count=len(contracts),
         )
 
     def fetch_derivative_strikes(
@@ -469,27 +547,23 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
         option_type: str | None = None,
         context: BrokerRequestContext | None = None,
     ) -> BrokerResponse:
-        market_data = self._get_market_data()
-        strikes = market_data.get_derivative_strikes(
+        del context
+        strikes = self._get_market_data().get_derivative_strikes(
             exchange=exchange,
             underlying=underlying,
             instrument_type=instrument_type,
             expiry=expiry,
             option_type=option_type,
         )
-
-        return BrokerResponse(
-            broker_name=self.broker_name,
+        return self._response(
             operation="fetch_derivative_strikes",
             payload=strikes,
-            response_meta={
-                "exchange": exchange.upper(),
-                "underlying": underlying.upper(),
-                "instrument_type": instrument_type.upper(),
-                "expiry": expiry,
-                "option_type": option_type.upper() if option_type else None,
-                "strike_count": len(strikes),
-            },
+            exchange=exchange.upper(),
+            underlying=underlying.upper(),
+            instrument_type=instrument_type.upper(),
+            expiry=expiry,
+            option_type=option_type.upper() if option_type else None,
+            strike_count=len(strikes),
         )
 
     def fetch_instruments_by_exchange(
@@ -497,17 +571,15 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
         exchange: str,
         context: BrokerRequestContext | None = None,
     ) -> BrokerResponse:
-        market_data = self._get_market_data()
-        instruments = market_data.get_instruments_by_exchange(exchange)
-
-        return BrokerResponse(
-            broker_name=self.broker_name,
+        del context
+        instruments = self._get_market_data().get_instruments_by_exchange(
+            exchange
+        )
+        return self._response(
             operation="fetch_instruments_by_exchange",
             payload=instruments,
-            response_meta={
-                "exchange": exchange.upper(),
-                "instrument_count": len(instruments),
-            },
+            exchange=exchange.upper(),
+            instrument_count=len(instruments),
         )
 
     def resolve_derivative_instruments(
@@ -515,6 +587,7 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
         requests: tuple[DerivativeInstrumentRequest, ...],
         context: BrokerRequestContext | None = None,
     ) -> BrokerResponse:
+        del context
         if not requests:
             raise AngelOneSmartApiRestBrokerError(
                 "Angel One derivative resolution requires requests"
@@ -542,39 +615,33 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
 
             resolved_instruments.append(instrument.as_dict())
 
-        return BrokerResponse(
-            broker_name=self.broker_name,
+        return self._response(
             operation="resolve_derivative_instruments",
             payload=resolved_instruments,
-            response_meta={"instrument_count": len(resolved_instruments)},
+            instrument_count=len(resolved_instruments),
         )
 
     def healthcheck(
         self,
         context: BrokerRequestContext | None = None,
     ) -> BrokerResponse:
-        if self.session is None:
-            self.authenticate()
-
-        return BrokerResponse(
-            broker_name=self.broker_name,
+        del context
+        self._ensure_authenticated()
+        return self._response(
             operation="healthcheck",
             payload={"status": "authenticated"},
-            response_meta={"capabilities": asdict(self.capabilities)},
+            capabilities=asdict(self.capabilities),
         )
 
     def terminate_session(self) -> dict | None:
-        try:
-            return self.client.terminateSession(self.client_code)
-        except Exception:  # noqa: BLE001
-            return None
+        return self._session_manager.terminate()
 
     @broker_error_handler(
         "Angel One market data request failed",
         lambda self, payload: {"payload": payload},
     )
     def _call_market_data(self, payload: dict) -> dict:
-        return self.client.getMarketData(**payload)
+        return self._transport.get_market_data(payload)
 
     @broker_error_handler("Angel One instrument master load failed")
     def _get_market_data(self) -> AngelInstrumentMaster:
@@ -593,7 +660,8 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
         for symbol in symbols:
             try:
                 instrument = market_data.resolve_equity_instrument(
-                    symbol, exchange
+                    symbol,
+                    exchange,
                 )
             except LookupError as exc:
                 raise AngelOneSmartApiRestBrokerError(
@@ -605,12 +673,24 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
                     },
                 ) from exc
             tokens.append(instrument.token)
-
         return tokens
 
     def _ensure_authenticated(self) -> None:
-        if self.session is None:
-            self.authenticate()
+        self._session_manager.ensure_authenticated()
+
+    def _response(
+        self,
+        *,
+        operation: str,
+        payload,
+        **response_meta,
+    ) -> BrokerResponse:
+        return BrokerResponse(
+            broker_name=self.broker_name,
+            operation=operation,
+            payload=payload,
+            response_meta=response_meta,
+        )
 
     @staticmethod
     def _merge_bulk_quote_payloads(
@@ -658,7 +738,6 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
                     "payload_type": type(raw).__name__,
                 },
             )
-
         if raw.get("status") is False:
             raise AngelOneSmartApiRestBrokerError(
                 "Angel One bulk quote request failed",
@@ -672,71 +751,5 @@ class AngelOneSmartApiRestBroker(MarketDataBroker):
                 },
             )
 
-    @staticmethod
-    def _validate_bulk_chunk_size(chunk_size: int) -> int:
-        if chunk_size <= 0:
-            raise AngelOneSmartApiRestBrokerError(
-                "Angel One bulk quotes chunk_size must be positive"
-            )
-        if chunk_size > 50:
-            raise AngelOneSmartApiRestBrokerError(
-                "Angel One bulk quotes chunk_size cannot exceed 50",
-                {"chunk_size": chunk_size},
-            )
-        return chunk_size
 
-    @staticmethod
-    def _require_symbols(
-        symbols: tuple[str, ...],
-        operation: str,
-    ) -> tuple[str, ...]:
-        if not symbols:
-            raise AngelOneSmartApiRestBrokerError(
-                "Angel One {0} requires symbols".format(operation)
-            )
-        return symbols
-
-    @staticmethod
-    def _require_tokens(
-        tokens: tuple[str, ...],
-        operation: str,
-    ) -> tuple[str, ...]:
-        if not tokens:
-            raise AngelOneSmartApiRestBrokerError(
-                "Angel One {0} requires instrument_tokens".format(operation)
-            )
-        return tuple(str(token) for token in tokens)
-
-    @staticmethod
-    def _map_interval(interval: str) -> str:
-        mapping = {
-            "1m": "ONE_MINUTE",
-            "3m": "THREE_MINUTE",
-            "5m": "FIVE_MINUTE",
-            "10m": "TEN_MINUTE",
-            "15m": "FIFTEEN_MINUTE",
-            "30m": "THIRTY_MINUTE",
-            "1h": "ONE_HOUR",
-            "1d": "ONE_DAY",
-        }
-        try:
-            return mapping[interval]
-        except KeyError as exc:
-            raise AngelOneSmartApiRestBrokerError(
-                "Unsupported Angel One interval: {0}".format(interval)
-            ) from exc
-
-
-def _required_env(name: str) -> str:
-    value = os.getenv(name)
-    if not value:
-        raise RuntimeError("{0} is not set".format(name))
-    return value
-
-
-def _chunk_sequence(
-    values: tuple[str, ...],
-    chunk_size: int,
-):
-    for index in range(0, len(values), chunk_size):
-        yield values[index : index + chunk_size]
+__all__ = ["AngelOneSmartApiRestBroker"]

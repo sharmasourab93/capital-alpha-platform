@@ -5,6 +5,10 @@ import pytest
 from data_layer.abs import DerivativeInstrumentRequest
 from data_layer.brokers.angelone.rest.instrument_master import (
     AngelInstrumentMaster,
+    DerivativeInstrumentRecord,
+    InstrumentBucket,
+    ListedEquity,
+    ListedEquityInstrument,
 )
 
 
@@ -166,6 +170,245 @@ def test_get_symbol_name_page_returns_filtered_paginated_rows(
     assert page["items"] == [
         {"symbol": "SBIN-EQ", "name": "STATE BANK OF INDIA"}
     ]
+
+
+def test_get_instruments_by_exchange_page_returns_filtered_paginated_rows(
+    instrument_master: AngelInstrumentMaster,
+) -> None:
+    page = instrument_master.get_instruments_by_exchange_page(
+        "NSE",
+        query="SBIN",
+        offset=0,
+        limit=10,
+    )
+
+    assert page["exchange"] == "NSE"
+    assert page["query"] == "SBIN"
+    assert page["offset"] == 0
+    assert page["limit"] == 10
+    assert page["total"] == 1
+    assert page["count"] == 1
+    assert page["items"][0]["symbol"] == "SBIN-EQ"
+
+
+def test_get_listed_equities_returns_canonical_nse_symbols(
+    instrument_master: AngelInstrumentMaster,
+) -> None:
+    payload = instrument_master.get_listed_equities("NSE")
+
+    assert payload["exchange"] == "NSE"
+    assert payload["total"] == 3
+    assert payload["offset"] == 0
+    assert payload["limit"] == 100
+    assert payload["count"] == 3
+    assert payload["items"] == [
+        {
+            "symbol": "RELIANCE",
+            "name": "RELIANCE INDUSTRIES",
+        },
+        {
+            "symbol": "SBIN",
+            "name": "STATE BANK OF INDIA",
+        },
+        {
+            "symbol": "UBL",
+            "name": "UNITED BREWERIES",
+        },
+    ]
+
+
+def test_get_listed_equities_returns_paginated_rows(
+    instrument_master: AngelInstrumentMaster,
+) -> None:
+    payload = instrument_master.get_listed_equities(
+        "NSE",
+        offset=1,
+        limit=1,
+    )
+
+    assert payload["total"] == 3
+    assert payload["offset"] == 1
+    assert payload["limit"] == 1
+    assert payload["count"] == 1
+    assert payload["items"] == [
+        {
+            "symbol": "SBIN",
+            "name": "STATE BANK OF INDIA",
+        }
+    ]
+
+
+def test_get_listed_equities_includes_plain_eq_rows_without_eq_suffix() -> (
+    None
+):
+    master = AngelInstrumentMaster.from_rows(
+        [
+            {
+                "token": "91001",
+                "symbol": "ABC",
+                "name": "ABC INDUSTRIES",
+                "exch_seg": "NSE",
+                "instrumenttype": "EQ",
+                "expiry": "",
+                "strike": "",
+                "lotsize": "1",
+            }
+        ]
+    )
+
+    payload = master.get_listed_equities("NSE")
+
+    assert payload["items"] == [
+        {
+            "symbol": "ABC",
+            "name": "ABC INDUSTRIES",
+        }
+    ]
+
+
+def test_resolve_equity_instruments_by_name_returns_full_stock_metadata(
+    instrument_master: AngelInstrumentMaster,
+) -> None:
+    matches = instrument_master.resolve_equity_instruments_by_name(
+        "NSE",
+        "STATE BANK OF INDIA",
+    )
+
+    assert len(matches) == 1
+    assert matches[0].token == "3045"
+    assert matches[0].symbol == "SBIN-EQ"
+
+
+def test_from_rows_precomputes_listed_equities_index(
+    instrument_master: AngelInstrumentMaster,
+) -> None:
+    assert instrument_master.listed_equities_by_exchange["NSE"] == (
+        ListedEquity(
+            symbol="RELIANCE",
+            name="RELIANCE INDUSTRIES",
+            exchange="NSE",
+            broker_symbol="RELIANCE-EQ",
+            token="2885",
+        ),
+        ListedEquity(
+            symbol="SBIN",
+            name="STATE BANK OF INDIA",
+            exchange="NSE",
+            broker_symbol="SBIN-EQ",
+            token="3045",
+        ),
+        ListedEquity(
+            symbol="UBL",
+            name="UNITED BREWERIES",
+            exchange="NSE",
+            broker_symbol="UBL-EQ",
+            token="16713",
+        ),
+    )
+
+
+def test_get_exchange_segment_bucket_returns_compact_nse_equity_records(
+    instrument_master: AngelInstrumentMaster,
+) -> None:
+    bucket = instrument_master.get_exchange_segment_bucket("NSE", "EQ")
+
+    assert bucket == InstrumentBucket(
+        exchange="NSE",
+        instrument_type="EQ",
+        asset_class="equity",
+        asset_type="stock",
+        derivative_kind="none",
+        items=(
+            ListedEquityInstrument(
+                token="2885",
+                symbol="RELIANCE",
+                name="RELIANCE INDUSTRIES",
+                exchange="NSE",
+                tick_size=None,
+            ),
+            ListedEquityInstrument(
+                token="3045",
+                symbol="SBIN",
+                name="STATE BANK OF INDIA",
+                exchange="NSE",
+                tick_size=None,
+            ),
+            ListedEquityInstrument(
+                token="16713",
+                symbol="UBL",
+                name="UNITED BREWERIES",
+                exchange="NSE",
+                tick_size=None,
+            ),
+        ),
+    )
+
+
+def test_get_exchange_segment_bucket_returns_derivative_records_in_o1_lookup_shape(
+    instrument_master: AngelInstrumentMaster,
+) -> None:
+    bucket = instrument_master.get_exchange_segment_bucket("NFO", "OPTIDX")
+
+    assert bucket is not None
+    assert bucket.exchange == "NFO"
+    assert bucket.instrument_type == "OPTIDX"
+    assert bucket.asset_class == "derivative"
+    assert bucket.asset_type == "option"
+    assert bucket.derivative_kind == "option"
+    assert bucket.items[0] == DerivativeInstrumentRecord(
+        token="50002",
+        symbol="BANKNIFTY29MAY202550000CE",
+        name="BANKNIFTY",
+        exchange="NFO",
+        instrument_type="OPTIDX",
+        underlying="BANKNIFTY",
+        expiry="29MAY2025",
+        strike=50000.0,
+        lot_size=15,
+        tick_size=None,
+        option_type="CE",
+        asset_class="derivative",
+        asset_type="option",
+        derivative_kind="option",
+    )
+
+
+def test_get_listed_stock_records_scans_only_equity_bucket(
+    instrument_master: AngelInstrumentMaster,
+) -> None:
+    stocks = instrument_master.get_listed_stock_records("NSE")
+
+    assert stocks == (
+        ListedEquityInstrument(
+            token="2885",
+            symbol="RELIANCE",
+            name="RELIANCE INDUSTRIES",
+            exchange="NSE",
+            tick_size=None,
+        ),
+        ListedEquityInstrument(
+            token="3045",
+            symbol="SBIN",
+            name="STATE BANK OF INDIA",
+            exchange="NSE",
+            tick_size=None,
+        ),
+        ListedEquityInstrument(
+            token="16713",
+            symbol="UBL",
+            name="UNITED BREWERIES",
+            exchange="NSE",
+            tick_size=None,
+        ),
+    )
+
+
+def test_get_exchange_segment_types_returns_available_bucket_keys(
+    instrument_master: AngelInstrumentMaster,
+) -> None:
+    assert instrument_master.get_exchange_segment_types("NFO") == {
+        "NFO": ("FUTIDX", "FUTSTK", "OPTIDX", "OPTSTK")
+    }
 
 
 def test_resolve_derivative_instrument_resolves_unique_option_contract(

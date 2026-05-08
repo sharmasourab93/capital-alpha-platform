@@ -109,7 +109,7 @@ def test_router_derivative_strikes_forwards_expected_query_params():
     router._resolve_broker = lambda name: _DerivativeStrikesBroker()  # type: ignore[method-assign]
 
     status_code, payload = router.handle(
-        path="/market/derivative-strikes",
+        path="/market/derivatives/strikes",
         method="GET",
         query={
             "provider": "angelone",
@@ -126,3 +126,93 @@ def test_router_derivative_strikes_forwards_expected_query_params():
     assert status_code == 200
     assert payload["data"] == (50000.0, 51000.0)
     assert payload["meta"]["operation"] == "fetch_derivative_strikes"
+
+
+def test_router_nse_listed_stocks_calls_compact_equity_handler():
+    class _ListedStocksBroker:
+        broker_name = "angelone"
+
+        def fetch_listed_equities(self, **kwargs):
+            assert kwargs["exchange"] == "NSE"
+            assert kwargs["offset"] == 100
+            assert kwargs["limit"] == 50
+            return BrokerResponse(
+                broker_name="angelone",
+                operation="fetch_listed_equities",
+                payload={
+                    "exchange": "NSE",
+                    "total": 1,
+                    "items": [
+                        {
+                            "symbol": "SBIN",
+                            "name": "STATE BANK OF INDIA",
+                        }
+                    ],
+                },
+                response_meta={"exchange": "NSE", "instrument_total": 1},
+            )
+
+    router = RestRouter()
+    router._resolve_broker = lambda name: _ListedStocksBroker()  # type: ignore[method-assign]
+
+    status_code, payload = router.handle(
+        path="/market/cash/nse-listed-stocks",
+        method="GET",
+        query={"provider": "angelone", "offset": "100", "limit": "50"},
+        body={},
+        request_id="req-4",
+    )
+
+    assert status_code == 200
+    assert payload["meta"]["operation"] == "fetch_listed_equities"
+    assert payload["data"]["items"] == [
+        {
+            "symbol": "SBIN",
+            "name": "STATE BANK OF INDIA",
+        }
+    ]
+
+
+def test_router_bse_listed_stocks_calls_compact_equity_handler():
+    class _ListedStocksBroker:
+        broker_name = "angelone"
+
+        def fetch_listed_equities(self, **kwargs):
+            assert kwargs["exchange"] == "BSE"
+            assert kwargs["offset"] == 0
+            assert kwargs["limit"] == 25
+            return BrokerResponse(
+                broker_name="angelone",
+                operation="fetch_listed_equities",
+                payload={
+                    "exchange": "BSE",
+                    "total": 1,
+                    "items": [
+                        {
+                            "symbol": "SBIN",
+                            "name": "STATE BANK OF INDIA",
+                        }
+                    ],
+                },
+                response_meta={"exchange": "BSE", "instrument_total": 1},
+            )
+
+    router = RestRouter()
+    router._resolve_broker = lambda name: _ListedStocksBroker()  # type: ignore[method-assign]
+
+    status_code, payload = router.handle(
+        path="/market/cash/bse-listed-stocks",
+        method="GET",
+        query={"provider": "angelone", "offset": "0", "limit": "25"},
+        body={},
+        request_id="req-5",
+    )
+
+    assert status_code == 200
+    assert payload["meta"]["operation"] == "fetch_listed_equities"
+    assert payload["data"]["items"] == [
+        {
+            "symbol": "SBIN",
+            "name": "STATE BANK OF INDIA",
+        }
+    ]
