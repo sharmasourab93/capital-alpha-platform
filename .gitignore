@@ -38,3 +38,5 @@ instance/config
 *logs/*
 *.logs
 *.log
+AGENTS.md
+.aiassistant/*
