@@ -60,7 +60,7 @@ class StockExchangeList(ABC):
         return [str(other) for other in self.others.values()]
 
     @property
-    def get_all_scrips(self) -> list[str]:
+    def all_scrips(self) -> list[str]:
         return self.all_stocks + self.all_indices
 
 

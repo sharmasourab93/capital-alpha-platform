@@ -26,10 +26,10 @@ class AngelOneIndex(BaseScripData):
     def from_row(cls, row: dict[str, Any]) -> "AngelOneIndex":
 
         return cls(
-            exchange=row.get("exch_seg"),
-            instrumenttype=row.get("instrumenttype"),
-            symbol=row.get("symbol"),
-            name=row.get("name"),
+            exchange=str(row.get("exch_seg").upper()),
+            instrumenttype=str(row.get("instrumenttype")),
+            symbol=str(row.get("symbol")).upper(),
+            name=(row.get("name")).upper(),
             token=parse_int(row.get("token"))
         )
 
@@ -41,10 +41,10 @@ class AngelOneStock(BaseScripData):
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> "AngelOneStock":
         return cls(
-            exchange=row.get("exch_seg"),
+            exchange=str(row.get("exch_seg")).upper(),
             ticksize=row.get("tick_size"),
-            symbol=row.get("symbol"),
-            name=row.get("name"),
+            symbol=str(row.get("symbol")).upper(),
+            name=str(row.get("name")).upper(),
             token=parse_int(row.get("token"))
         )
 
@@ -57,12 +57,12 @@ class AngelOneOtherScrip(BaseScripData):
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> "AngelOneOtherScrip":
         return cls(
-            exchange=row.get("exch_seg"),
-            instrumenttype=row.get("instrumenttype"),
+            exchange=str(row.get("exch_seg")).upper(),
+            instrumenttype=str(row.get("instrumenttype")).upper(),
             ticksize=row.get("tick_size"),
-            token=row.get("token"),
-            symbol=row.get("symbol"),
-            name=row.get("name"),
+            token=parse_int(row.get("token")),
+            symbol=str(row.get("symbol")).upper(),
+            name=str(row.get("name")).upper(),
         )
 
 
