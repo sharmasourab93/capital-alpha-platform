@@ -30,7 +30,7 @@ class AngelOneIndex(BaseScripData):
             instrumenttype=str(row.get("instrumenttype")),
             symbol=str(row.get("symbol")).upper(),
             name=(row.get("name")).upper(),
-            token=parse_int(row.get("token"))
+            token=parse_int(row.get("token")),
         )
 
 
@@ -45,7 +45,7 @@ class AngelOneStock(BaseScripData):
             ticksize=row.get("tick_size"),
             symbol=str(row.get("symbol")).upper(),
             name=str(row.get("name")).upper(),
-            token=parse_int(row.get("token"))
+            token=parse_int(row.get("token")),
         )
 
 
@@ -177,18 +177,36 @@ class AngelOneBroker:
     def __init__(self, instrument_master: AngelOneInstruments):
         self.instrument_master = instrument_master
 
-    def get_exchange(
-        self, exchange: str
-    ) -> AngelOneNSEList | AngelOneBSEList | None:
-        return self.instrument_master.get_exchange(exchange)
+    def get_exchange(self, exchange: str) -> AngelOneNSE | AngelOneBSE | None:
+        exchange = exchange.upper()
 
-    def get_scrip(self, exchange: str, key: str) -> AngelOneStock | None:
-        return self.instrument_master.get_scrip(exchange, key)
+        if exchange == self.instrument_master.nse.exchange:
+            return self.instrument_master.nse
 
-    def get_all_scrips(
-        self, exchange: str = "NSE"
-    ) -> tuple[AngelOneStock, ...]:
-        return self.instrument_master.get_all_scrips(exchange)
+        if exchange == self.instrument_master.bse.exchange:
+            return self.instrument_master.bse
+
+        return None
+
+    def get_scrip(self, exchange: str, key: str) -> BaseScripData | None:
+        exchange_data = self.get_exchange(exchange)
+        if exchange_data is None:
+            return None
+
+        key = key.upper()
+
+        return (
+            exchange_data.get_stock(key)
+            or exchange_data.get_index(key)
+            or exchange_data.get_others(key)
+        )
+
+    def get_all_scrips(self, exchange: str = "NSE") -> list[str]:
+        exchange_data = self.get_exchange(exchange)
+        if exchange_data is None:
+            return []
+
+        return exchange_data.all_scrips
 
     @classmethod
     def from_scrip_master_rows(cls, rows: Iterable[dict[str, Any]]) -> Self:
