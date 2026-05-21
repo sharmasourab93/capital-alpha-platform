@@ -8,7 +8,7 @@ from urllib.request import urlopen
 
 from data_layer.abstractions.instruments import (
     BaseScripData,
-    StockList,
+    StockExchangeList,
     parse_int,
 )
 
@@ -22,208 +22,126 @@ ANGEL_SCRIP_MASTER_URL = (
 class AngelOneIndex(BaseScripData):
     instrumenttype: str
 
+    @classmethod
+    def from_row(cls, row: dict[str, Any]) -> AngelOneIndex:
+        cls.instrumenttype = row.get("instrumenttype")
+        cls.exchange = row.get("exch_seg")
+        cls.symbol = row.get("symbol")
+        cls.name = row.get("name")
+        return cls
+
 
 @dataclass(frozen=True, slots=True)
 class AngelOneStock(BaseScripData):
     ticksize: str
 
+    @classmethod
+    def from_row(cls, row: dict[str, Any]) -> AngelOneStock:
+        cls.ticksize = row.get("ticksize")
+        cls.exchange = row.get("exch_seg")
+        cls.symbol = row.get("symbol")
+        cls.name = row.get("name")
+        return cls
+
 
 @dataclass(frozen=True, slots=True)
-class AngelOneDerivative(BaseScripData):
+class AngelOneOtherScrip(BaseScripData):
     instrumenttype: str
-    expiry: str
-    strike: int | float
-    lotsize: int | float
-    tick_size: int | float
+    ticksize: str
+
+    @classmethod
+    def from_row(cls, row: dict[str, Any]) -> AngelOneOtherScrip:
+        cls.instrumenttype = row.get("instrumenttype")
+        cls.ticksize = row.get("ticksize")
+        cls.exchange = row.get("exch_seg")
+        cls.symbol = row.get("symbol")
+        cls.name = row.get("name")
+        return cls
 
 
 @dataclass(frozen=True, slots=True)
-class AngelOneNSEList(StockList):
-    @property
-    def exchange_segment(self) -> str:
-        return "NSE"
-
-    @property
-    def symbols(self) -> tuple[str, ...]:
-        return tuple(stock.symbol for stock in self.stocks.values())
-
-    def get_by_symbol(self, symbol: str) -> AngelOneStock | None:
-        lookup_key = symbol.upper()
-        stock = self.stocks.get(lookup_key)
-        if stock is not None:
-            return stock
-
-        nse_symbol = f"{lookup_key}-EQ"
-        for stock in self.stocks.values():
-            if stock.symbol.upper() in {lookup_key, nse_symbol}:
-                return stock
-        return None
-
-    def get_all_scrips(self) -> tuple[AngelOneStock, ...]:
-        return tuple(self.stocks.values())
-
-    def get_by_token(self, token: int | str) -> AngelOneStock | None:
-        token_value = parse_int(token)
-        for stock in self.stocks.values():
-            if stock.token == token_value:
-                return stock
-        return None
-
-    def get_token(self, symbol: str) -> int | None:
-        stock = self.get_by_symbol(symbol)
-        if stock is None:
-            return None
-        return stock.token
+class AngelOneNSE(StockExchangeList):
+    exchange: str = "NSE"
 
 
 @dataclass(frozen=True, slots=True)
-class AngelOneBSEList(StockList):
-    @property
-    def exchange_segment(self) -> str:
-        return "BSE"
-
-    @property
-    def symbols(self) -> tuple[str, ...]:
-        return tuple(stock.symbol for stock in self.stocks.values())
-
-    def get_by_symbol(self, symbol: str) -> AngelOneStock | None:
-        lookup_key = symbol.upper()
-        stock = self.stocks.get(lookup_key)
-        if stock is not None:
-            return stock
-
-        for stock in self.stocks.values():
-            if stock.symbol.upper() == lookup_key:
-                return stock
-        return None
-
-    def get_all_scrips(self) -> tuple[AngelOneStock, ...]:
-        return tuple(self.stocks.values())
-
-    def get_by_token(self, token: int | str) -> AngelOneStock | None:
-        token_value = parse_int(token)
-        for stock in self.stocks.values():
-            if stock.token == token_value:
-                return stock
-        return None
-
-    def get_token(self, symbol: str) -> int | None:
-        stock = self.get_by_symbol(symbol)
-        if stock is None:
-            return None
-        return stock.token
+class AngelOneBSE(StockExchangeList):
+    exchange: str = "BSE"
 
 
 @dataclass(frozen=True, slots=True)
 class AngelOneInstruments:
-    nse: AngelOneNSEList
-    bse: AngelOneBSEList
+    nse: AngelOneNSE
+    bse: AngelOneBSE
 
     @property
-    def exchange_segments(self) -> tuple[str, ...]:
-        return (self.nse.exchange_segment, self.bse.exchange_segment)
-
-    def get_exchange(
-        self, exchange: str
-    ) -> AngelOneNSEList | AngelOneBSEList | None:
-        exchange_segment = exchange.upper()
-        if exchange_segment == self.nse.exchange_segment:
-            return self.nse
-        if exchange_segment == self.bse.exchange_segment:
-            return self.bse
-        return None
-
-    def get_scrip(self, exchange: str, key: str) -> AngelOneStock | None:
-        exchange_list = self.get_exchange(exchange)
-        if exchange_list is None:
-            return None
-        return exchange_list.get_by_symbol(key)
-
-    def get_all_scrips(
-        self, exchange: str = "NSE"
-    ) -> tuple[AngelOneStock, ...]:
-        exchange_list = self.get_exchange(exchange)
-        if exchange_list is None:
-            return ()
-        return exchange_list.get_all_scrips()
+    def nse_stocks(self):
+        return self.nse.stocks
 
     @property
-    def nse_stock(self) -> AngelOneNSEList:
-        return self.nse
+    def bse_stocks(self):
+        return self.bse.stocks
 
     @property
-    def bse_stock(self) -> AngelOneBSEList:
-        return self.bse
+    def nse_indices(self):
+        return self.nse.indices
+
+    @property
+    def bse_indices(self):
+        return self.bse.indices
 
     @classmethod
     def iterate_over_scrips(
         cls, data: Iterable[dict[str, Any]]
     ) -> AngelOneInstruments:
         nse_stocks: dict[str, AngelOneStock] = {}
-        bse_stocks: dict[str, AngelOneStock] = {}
+        bse_stocks: dict[str, AngelOneStock] = []
         nse_indices: dict[str, AngelOneIndex] = {}
         bse_indices: dict[str, AngelOneIndex] = {}
+        nse_others: dict[str, AngelOneOtherScrip] = {}
+        bse_others: dict[str, AngelOneOtherScrip] = {}
+
+        implemented_exchanges = ("NSE", "BSE")
+        mapping = {
+            ("NSE", "EQ"): nse_stocks,
+            ("BSE", "EQ"): bse_stocks,
+            ("NSE", "AMXIDX"): nse_indices,
+            ("BSE", "AMXIDX"): bse_indices,
+            ("NSE", ""): nse_others,
+            ("BSE", ""): bse_others,
+        }
 
         for row in data:
             exchange = str(row.get("exch_seg", "")).upper()
-            if exchange not in {"NSE", "BSE"}:
-                continue
+            name = str(row.get("name")).upper()
+            instrument_type = str(row.get("instrumenttype", "")).strip()
+            instrument_type = (
+                "EQ" if row.get("symbol").endswith("-EQ") else instrument_type
+            )
+            is_equity = True if instrument_type == "EQ" else False
+            is_index = True if instrument_type == "AMXIDX" else False
 
-            if cls._is_stock_row(row, exchange):
-                stock = cls._stock_from_row(row)
-                stocks = nse_stocks if exchange == "NSE" else bse_stocks
-                if stock.name in stocks:
-                    raise ValueError(
-                        "Duplicate Angel instrument stock key "
-                        f"{stock.name!r} in {exchange}"
+            if exchange in implemented_exchanges:
+                if is_equity:
+                    mapping[(exchange, instrument_type)].update(
+                        {name: AngelOneStock.from_row(row)}
+                    )
+                elif is_index:
+                    mapping[(exchange, instrument_type)].update(
+                        {name: AngelOneIndex.from_row(row)}
+                    )
+                else:
+                    mapping[(exchange, instrument_type)].update(
+                        {name: AngelOneOtherScrip.from_row(row)}
                     )
 
-                stocks[stock.name] = stock
-                continue
-
-            index = cls._index_from_row(row)
-            indices = nse_indices if exchange == "NSE" else bse_indices
-            indices[index.symbol] = index
-
         return cls(
-            nse=AngelOneNSEList(stocks=nse_stocks, indices=nse_indices),
-            bse=AngelOneBSEList(stocks=bse_stocks, indices=bse_indices),
-        )
-
-    @staticmethod
-    def _is_stock_row(row: dict[str, Any], exchange: str) -> bool:
-        instrument_type = str(row.get("instrumenttype", "")).strip()
-        if instrument_type != "":
-            return False
-
-        symbol = str(row.get("symbol", "")).strip().upper()
-        if exchange == "NSE":
-            return symbol.endswith("-EQ")
-
-        if exchange == "BSE":
-            return parse_int(row.get("tick_size", 0)) > 0
-
-        return False
-
-    @staticmethod
-    def _stock_from_row(row: dict[str, Any]) -> AngelOneStock:
-        return AngelOneStock(
-            exchange=str(row.get("exch_seg", "")).upper(),
-            # instrumenttype=str(row.get("instrumenttype", "")),
-            token=parse_int(row.get("token")),
-            symbol=str(row.get("symbol", "")),
-            name=str(row.get("name", "")),
-            ticksize=str(row.get("tick_size", "")),
-        )
-
-    @staticmethod
-    def _index_from_row(row: dict[str, Any]) -> AngelOneIndex:
-        return AngelOneIndex(
-            exchange=str(row.get("exch_seg", "")).upper(),
-            instrumenttype=str(row.get("instrumenttype", "")),
-            token=parse_int(row.get("token")),
-            symbol=str(row.get("symbol", "")),
-            name=str(row.get("name", "")),
+            nse=AngelOneNSE(
+                stocks=nse_stocks, indices=nse_indices, others=nse_others
+            ),
+            bse=AngelOneBSE(
+                stocks=bse_stocks, indices=bse_indices, others=bse_others
+            ),
         )
 
     @classmethod
