@@ -193,7 +193,7 @@ class AngelOneBroker:
         if exchange_data is None:
             return None
 
-        key = key.upper()
+        key = name.upper()
 
         return (
             exchange_data.get_stock(key)
