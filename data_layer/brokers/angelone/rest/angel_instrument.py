@@ -27,10 +27,10 @@ class AngelOneIndex(BaseScripData):
 
         return cls(
             exchange=row.get("exch_seg"),
-            instrumentetype=row.get("instrumenttype"),
+            instrumenttype=row.get("instrumenttype"),
             symbol=row.get("symbol"),
             name=row.get("name"),
-            token=row.get("token"),
+            token=parse_int(row.get("token"))
         )
 
 
@@ -45,7 +45,7 @@ class AngelOneStock(BaseScripData):
             ticksize=row.get("tick_size"),
             symbol=row.get("symbol"),
             name=row.get("name"),
-            token=row.get("token"),
+            token=parse_int(row.get("token"))
         )
 
 
@@ -102,7 +102,7 @@ class AngelOneInstruments:
         cls, data: Iterable[dict[str, Any]]
     ) -> AngelOneInstruments:
         nse_stocks: dict[str, AngelOneStock] = {}
-        bse_stocks: dict[str, AngelOneStock] = []
+        bse_stocks: dict[str, AngelOneStock] = {}
         nse_indices: dict[str, AngelOneIndex] = {}
         bse_indices: dict[str, AngelOneIndex] = {}
         nse_others: dict[str, AngelOneOtherScrip] = {}
@@ -122,8 +122,9 @@ class AngelOneInstruments:
             exchange = str(row.get("exch_seg", "")).upper()
             name = str(row.get("name")).upper()
             instrument_type = str(row.get("instrumenttype", "")).strip()
+            symbol = str(row.get("symbol", "")).upper()
             instrument_type = (
-                "EQ" if row.get("symbol").endswith("-EQ") else instrument_type
+                "EQ" if symbol.endswith("-EQ") else instrument_type
             )
             is_equity = True if instrument_type == "EQ" else False
             is_index = True if instrument_type == "AMXIDX" else False
