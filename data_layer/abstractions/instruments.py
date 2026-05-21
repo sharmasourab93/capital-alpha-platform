@@ -17,7 +17,7 @@ class BaseScripData(ABC):
         return asdict(self)
 
     @abstractclassmethod
-    def from_row(cls, row: dict[str, Any]) -> BaseScripData:
+    def from_row(cls, row: dict[str, Any]) -> "BaseScripData":
         raise NotImplementedError()
 
 

@@ -23,12 +23,15 @@ class AngelOneIndex(BaseScripData):
     instrumenttype: str
 
     @classmethod
-    def from_row(cls, row: dict[str, Any]) -> AngelOneIndex:
-        cls.instrumenttype = row.get("instrumenttype")
-        cls.exchange = row.get("exch_seg")
-        cls.symbol = row.get("symbol")
-        cls.name = row.get("name")
-        return cls
+    def from_row(cls, row: dict[str, Any]) -> "AngelOneIndex":
+
+        return cls(
+            exchange=row.get("exch_seg"),
+            instrumentetype=row.get("instrumenttype"),
+            symbol=row.get("symbol"),
+            name=row.get("name"),
+            token=row.get("token"),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,12 +39,14 @@ class AngelOneStock(BaseScripData):
     ticksize: str
 
     @classmethod
-    def from_row(cls, row: dict[str, Any]) -> AngelOneStock:
-        cls.ticksize = row.get("ticksize")
-        cls.exchange = row.get("exch_seg")
-        cls.symbol = row.get("symbol")
-        cls.name = row.get("name")
-        return cls
+    def from_row(cls, row: dict[str, Any]) -> "AngelOneStock":
+        return cls(
+            exchange=row.get("exch_seg"),
+            ticksize=row.get("tick_size"),
+            symbol=row.get("symbol"),
+            name=row.get("name"),
+            token=row.get("token"),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,13 +55,15 @@ class AngelOneOtherScrip(BaseScripData):
     ticksize: str
 
     @classmethod
-    def from_row(cls, row: dict[str, Any]) -> AngelOneOtherScrip:
-        cls.instrumenttype = row.get("instrumenttype")
-        cls.ticksize = row.get("ticksize")
-        cls.exchange = row.get("exch_seg")
-        cls.symbol = row.get("symbol")
-        cls.name = row.get("name")
-        return cls
+    def from_row(cls, row: dict[str, Any]) -> "AngelOneOtherScrip":
+        return cls(
+            exchange=row.get("exch_seg"),
+            instrumenttype=row.get("instrumenttype"),
+            ticksize=row.get("tick_size"),
+            token=row.get("token"),
+            symbol=row.get("symbol"),
+            name=row.get("name"),
+        )
 
 
 @dataclass(frozen=True, slots=True)
