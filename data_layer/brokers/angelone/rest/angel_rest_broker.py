@@ -72,7 +72,7 @@ class AngelRestBroker(RestBroker):
 
     def __init__(
         self,
-        credentials: SmartApiCredentials,
+        credentials: SmartApiCredentials | None = None,
         client: SmartApiClient | None = None,
         instruments: AngelOneBroker | None = None,
         *,
@@ -84,11 +84,11 @@ class AngelRestBroker(RestBroker):
         transport: SmartApiTransport | None = None,
     ) -> None:
         """Create a broker using injected or default SmartAPI collaborators."""
-        self._credentials = credentials
-        self._client = client or client_factory(credentials.api_key)
+        self._credentials = credentials or SmartApiCredentials.from_env()
+        self._client = client or client_factory(self._credentials.api_key)
         self._session_manager = session_manager or AngelOneSessionManager(
             self._client,
-            credentials,
+            self._credentials,
             totp_provider,
         )
         self._account_service = account_service or AngelOneAccountService(

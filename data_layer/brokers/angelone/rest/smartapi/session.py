@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Mapping, Protocol
 
 import pyotp
 
@@ -30,6 +31,10 @@ class SmartApiSessionClient(Protocol):
 
 
 TotpProvider = Callable[[str], str]
+ANGELONE_API_KEY_ENV = "ANGELONE_API_KEY"
+ANGELONE_CLIENT_CODE_ENV = "ANGELONE_CLIENT_CODE"
+ANGELONE_PASSWORD_ENV = "ANGELONE_PASSWORD"
+ANGELONE_TOTP_SECRET_ENV = "ANGELONE_TOTP_SECRET"
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,10 +46,35 @@ class SmartApiCredentials:
     password: str
     totp_secret: str
 
+    @classmethod
+    def from_env(
+        cls,
+        environ: Mapping[str, str] | None = None,
+    ) -> "SmartApiCredentials":
+        """Load SmartAPI credentials from AngelOne environment variables."""
+        source = os.environ if environ is None else environ
+        return cls(
+            api_key=_require_env(source, ANGELONE_API_KEY_ENV),
+            client_code=_require_env(source, ANGELONE_CLIENT_CODE_ENV),
+            password=_require_env(source, ANGELONE_PASSWORD_ENV),
+            totp_secret=_require_env(source, ANGELONE_TOTP_SECRET_ENV),
+        )
+
 
 def default_totp_provider(secret: str) -> str:
     """Return the current TOTP for the provided secret."""
     return pyotp.TOTP(secret).now()
+
+
+def _require_env(source: Mapping[str, str], key: str) -> str:
+    """Return a required non-empty environment variable."""
+    value = source.get(key)
+    if value is None or not value.strip():
+        raise AngelOneSmartApiRestBrokerError(
+            "Missing AngelOne environment variable",
+            {"env_var": key},
+        )
+    return value.strip()
 
 
 class AngelOneSessionManager:
@@ -120,6 +150,10 @@ class AngelOneSessionManager:
 
 
 __all__ = [
+    "ANGELONE_API_KEY_ENV",
+    "ANGELONE_CLIENT_CODE_ENV",
+    "ANGELONE_PASSWORD_ENV",
+    "ANGELONE_TOTP_SECRET_ENV",
     "AngelOneSessionManager",
     "SmartApiCredentials",
     "SmartApiSessionClient",

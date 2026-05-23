@@ -6,9 +6,47 @@ from data_layer.brokers.angelone.rest.smartapi.errors import (
     AngelOneSmartApiRestBrokerError,
 )
 from data_layer.brokers.angelone.rest.smartapi.session import (
+    ANGELONE_API_KEY_ENV,
+    ANGELONE_CLIENT_CODE_ENV,
+    ANGELONE_PASSWORD_ENV,
+    ANGELONE_TOTP_SECRET_ENV,
     AngelOneSessionManager,
     SmartApiCredentials,
 )
+
+
+def test_credentials_load_from_environment_mapping() -> None:
+    """Verify SmartAPI credentials load from AngelOne env vars."""
+    credentials = SmartApiCredentials.from_env(
+        {
+            ANGELONE_API_KEY_ENV: " api-key ",
+            ANGELONE_CLIENT_CODE_ENV: " client ",
+            ANGELONE_PASSWORD_ENV: " password ",
+            ANGELONE_TOTP_SECRET_ENV: " secret ",
+        }
+    )
+
+    assert credentials == SmartApiCredentials(
+        api_key="api-key",
+        client_code="client",
+        password="password",
+        totp_secret="secret",
+    )
+
+
+def test_credentials_from_env_rejects_missing_values() -> None:
+    """Verify missing AngelOne env vars raise broker errors."""
+    with pytest.raises(AngelOneSmartApiRestBrokerError) as exc_info:
+        SmartApiCredentials.from_env(
+            {
+                ANGELONE_API_KEY_ENV: "api-key",
+                ANGELONE_CLIENT_CODE_ENV: "client",
+                ANGELONE_PASSWORD_ENV: " ",
+                ANGELONE_TOTP_SECRET_ENV: "secret",
+            }
+        )
+
+    assert exc_info.value.details == {"env_var": ANGELONE_PASSWORD_ENV}
 
 
 def test_authenticate_generates_totp_and_stores_session() -> None:

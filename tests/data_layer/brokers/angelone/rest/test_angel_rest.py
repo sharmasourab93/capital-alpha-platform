@@ -13,6 +13,12 @@ from data_layer.brokers.angelone.rest.smartapi.errors import (
     RetryConfig,
     call_smart_api,
 )
+from data_layer.brokers.angelone.rest.smartapi.session import (
+    ANGELONE_API_KEY_ENV,
+    ANGELONE_CLIENT_CODE_ENV,
+    ANGELONE_PASSWORD_ENV,
+    ANGELONE_TOTP_SECRET_ENV,
+)
 from data_layer.brokers.angelone.rest.smartapi.transport import (
     SmartConnectAdapter,
     default_smart_api_client_factory,
@@ -47,6 +53,52 @@ def test_broker_construction_does_not_load_instruments_from_network(
     )
 
     assert broker.session is None
+
+
+def test_broker_loads_credentials_from_environment_when_not_provided(
+    monkeypatch,
+) -> None:
+    """Verify broker construction can use environment credentials."""
+    monkeypatch.setenv(ANGELONE_API_KEY_ENV, "api-key")
+    monkeypatch.setenv(ANGELONE_CLIENT_CODE_ENV, "env-client")
+    monkeypatch.setenv(ANGELONE_PASSWORD_ENV, "env-password")
+    monkeypatch.setenv(ANGELONE_TOTP_SECRET_ENV, "env-secret")
+    client = _SmartApiClientStub()
+
+    broker = AngelRestBroker(
+        client=client,
+        instruments=AngelOneBroker.from_scrip_master_rows([]),
+        totp_provider=lambda secret: "123456",
+    )
+
+    broker.login()
+
+    assert client.calls[0] == (
+        "generate_session",
+        "env-client",
+        "env-password",
+        "123456",
+    )
+
+
+def test_broker_prefers_explicit_credentials_over_environment() -> None:
+    """Verify explicit credentials bypass environment lookup."""
+    client = _SmartApiClientStub()
+    broker = AngelRestBroker(
+        credentials=_credentials(),
+        client=client,
+        instruments=AngelOneBroker.from_scrip_master_rows([]),
+        totp_provider=lambda secret: "123456",
+    )
+
+    broker.login()
+
+    assert client.calls[0] == (
+        "generate_session",
+        "client",
+        "password",
+        "123456",
+    )
 
 
 def test_broker_lazily_loads_instruments_when_needed(monkeypatch) -> None:
