@@ -7,6 +7,8 @@ from typing import Any, Protocol
 import pyotp
 from data_layer.brokers.angelone.rest.smartapi.errors import (
     AngelOneSmartApiRestBrokerError,
+    smart_api_error_handler,
+    validate_smart_api_response,
 )
 
 
@@ -50,43 +52,44 @@ class AngelOneSessionManager:
         return self._session
 
     def authenticate(self) -> dict[str, Any]:
-        session = self._client.generate_session(
-            self._credentials.client_code,
-            self._credentials.password,
-            self._totp_provider(self._credentials.totp_secret),
-        )
+        session = self._generate_session()
         self._validate_session(session)
         self._session = session
         return session
+
+    def refresh(self) -> dict[str, Any]:
+        self._session = None
+        return self.authenticate()
 
     def ensure_authenticated(self) -> None:
         if self._session is None:
             self.authenticate()
 
     def terminate(self) -> dict[str, Any]:
-        try:
-            response = self._client.terminate_session(
-                self._credentials.client_code
-            )
-        except Exception as exc:
-            raise AngelOneSmartApiRestBrokerError(
-                "Angel One session termination failed",
-                {"client_code": self._credentials.client_code},
-            ) from exc
-
+        response = self._terminate_session()
         self._session = None
         return response
 
+    @smart_api_error_handler("Angel One authentication failed")
+    def _generate_session(self) -> dict[str, Any]:
+        return self._client.generate_session(
+            self._credentials.client_code,
+            self._credentials.password,
+            self._totp_provider(self._credentials.totp_secret),
+        )
+
+    @smart_api_error_handler(
+        "Angel One session termination failed",
+        validate_status=False,
+    )
+    def _terminate_session(self) -> dict[str, Any]:
+        return self._client.terminate_session(self._credentials.client_code)
+
     def _validate_session(self, session: dict[str, Any] | None) -> None:
-        if not isinstance(session, dict) or not session.get("data"):
+        validate_smart_api_response(session, "Angel One session was not authenticated")
+        if not session.get("data"):
             raise AngelOneSmartApiRestBrokerError(
                 "Angel One session was not authenticated",
-                {"session": session},
-            )
-
-        if session.get("status") is False:
-            raise AngelOneSmartApiRestBrokerError(
-                "Angel One authentication failed",
                 {"session": session},
             )
 

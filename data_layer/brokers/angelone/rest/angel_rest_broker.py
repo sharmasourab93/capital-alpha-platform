@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from functools import wraps
 from typing import Any
 
 from data_layer.abstractions.brokers.rest_broker import RestBroker
@@ -8,6 +9,9 @@ from data_layer.abstractions.instruments import BaseScripData
 from data_layer.brokers.angelone.rest.angel_instrument import AngelOneBroker
 from data_layer.brokers.angelone.rest.smartapi.account import (
     AngelOneAccountService,
+)
+from data_layer.brokers.angelone.rest.smartapi.errors import (
+    AngelOneSmartApiRestBrokerError,
 )
 from data_layer.brokers.angelone.rest.smartapi.instrument_resolver import (
     AngelInstrumentResolver,
@@ -29,6 +33,26 @@ from data_layer.brokers.angelone.rest.smartapi.transport import (
     SmartApiTransport,
     default_smart_api_client_factory,
 )
+
+BrokerOperation = Callable[..., dict[str, Any]]
+
+
+def authenticated_broker_call(operation: BrokerOperation) -> BrokerOperation:
+    @wraps(operation)
+    def wrapper(
+        self: "AngelRestBroker", *args: Any, **kwargs: Any
+    ) -> dict[str, Any]:
+        self.ensure_authenticated()
+        try:
+            return operation(self, *args, **kwargs)
+        except AngelOneSmartApiRestBrokerError as exc:
+            if not exc.is_auth_failure:
+                raise
+
+        self._session_manager.refresh()
+        return operation(self, *args, **kwargs)
+
+    return wrapper
 
 
 class AngelRestBroker(RestBroker):
@@ -64,14 +88,16 @@ class AngelRestBroker(RestBroker):
             self._client
         )
         self._transport = transport or SmartApiTransport(self._client)
-        self._resolver = resolver or AngelInstrumentResolver(
-            instruments or AngelOneBroker.from_url()
-        )
-        self.instruments = self._resolver.instruments
+        self._resolver = resolver
+        self._instruments = instruments
 
     @property
     def client(self) -> SmartApiClient:
         return self._client
+
+    @property
+    def instruments(self) -> AngelOneBroker:
+        return self._get_resolver().instruments
 
     @property
     def session(self) -> dict[str, Any] | None:
@@ -93,35 +119,36 @@ class AngelRestBroker(RestBroker):
         return self._session_manager.terminate()
 
     def get_scrip(self, exchange: str, key: str) -> BaseScripData | None:
-        return self._resolver.get_scrip(exchange, key)
+        return self._get_resolver().get_scrip(exchange, key)
 
     def get_all_scrips(self, exchange: str = "NSE") -> list[str]:
-        return self._resolver.get_all_scrips(exchange)
+        return self._get_resolver().get_all_scrips(exchange)
 
+    @authenticated_broker_call
     def get_profile(self) -> dict[str, Any]:
-        self.ensure_authenticated()
         return self._account_service.get_profile()
 
+    @authenticated_broker_call
     def get_funds(self) -> dict[str, Any]:
-        self.ensure_authenticated()
         return self._account_service.get_funds()
 
+    @authenticated_broker_call
     def get_holdings(self) -> dict[str, Any]:
-        self.ensure_authenticated()
         return self._account_service.get_holdings()
 
+    @authenticated_broker_call
     def get_positions(self) -> dict[str, Any]:
-        self.ensure_authenticated()
         return self._account_service.get_positions()
 
+    @authenticated_broker_call
     def get_order_book(self) -> dict[str, Any]:
-        self.ensure_authenticated()
         return self._account_service.get_order_book()
 
+    @authenticated_broker_call
     def get_trade_book(self) -> dict[str, Any]:
-        self.ensure_authenticated()
         return self._account_service.get_trade_book()
 
+    @authenticated_broker_call
     def get_candles(
         self,
         exchange: str,
@@ -130,32 +157,39 @@ class AngelRestBroker(RestBroker):
         fromdate: str,
         todate: str,
     ) -> dict[str, Any]:
-        scrip = self._resolver.require_scrip(exchange, key)
+        scrip = self._get_resolver().require_scrip(exchange, key)
         request = CandleRequest.from_scrip(
             scrip,
             interval,
             fromdate,
             todate,
         )
-        self.ensure_authenticated()
         return self._transport.get_candles(request)
 
+    @authenticated_broker_call
     def get_ltp(self, exchange: str, key: str) -> dict[str, Any]:
-        scrip = self._resolver.require_scrip(exchange, key)
+        scrip = self._get_resolver().require_scrip(exchange, key)
         request = LtpRequest.from_scrip(scrip)
-        self.ensure_authenticated()
         return self._transport.get_ltp(request)
 
+    @authenticated_broker_call
     def get_quote(
         self,
         exchange: str,
         key: str | Sequence[str],
         mode: str = "FULL",
     ) -> dict[str, Any]:
-        scrips = self._resolver.require_scrips(exchange, key)
+        scrips = self._get_resolver().require_scrips(exchange, key)
         request = QuoteRequest.from_scrips(mode, scrips)
-        self.ensure_authenticated()
         return self._transport.get_quote(request)
+
+    def _get_resolver(self) -> AngelInstrumentResolver:
+        if self._resolver is None:
+            self._resolver = AngelInstrumentResolver(
+                self._instruments or AngelOneBroker.from_url()
+            )
+            self._instruments = self._resolver.instruments
+        return self._resolver
 
 
 SmartAPICredentials = SmartApiCredentials
