@@ -1,7 +1,9 @@
+"""WebSocket broker contract placeholder."""
+
 from abc import ABC, abstractmethod
 
 
 class WssBroker(ABC):
-    # Yet to be implemented.
-    # Keeping a placeholder.
+    """Reserve the WebSocket adapter boundary."""
+
     pass

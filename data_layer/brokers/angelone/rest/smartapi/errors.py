@@ -1,3 +1,5 @@
+"""Error normalization and retry helpers for AngelOne SmartAPI."""
+
 from __future__ import annotations
 
 import time
@@ -9,6 +11,8 @@ from typing import Any
 
 @dataclass(frozen=True, slots=True)
 class RetryConfig:
+    """Retry settings for transient SmartAPI failures."""
+
     max_attempts: int = 3
     initial_delay_seconds: float = 0.2
     backoff_multiplier: float = 2.0
@@ -20,12 +24,16 @@ SmartApiOperation = Callable[..., dict[str, Any]]
 
 
 class AngelOneSmartApiRestBrokerError(Exception):
+    """Normalized AngelOne SmartAPI adapter error."""
+
     def __init__(self, message: str, details: dict | None = None) -> None:
+        """Create an error with optional structured details."""
         super().__init__(message)
         self.details = details or {}
 
     @property
     def is_auth_failure(self) -> bool:
+        """Return whether the error appears authentication-related."""
         return _is_auth_failure(self.details)
 
 
@@ -35,6 +43,8 @@ def smart_api_error_handler(
     retry_config: RetryConfig = DEFAULT_RETRY_CONFIG,
     validate_status: bool = True,
 ) -> Callable[[SmartApiOperation], SmartApiOperation]:
+    """Decorate SmartAPI calls with retry and response validation."""
+
     def decorator(operation: SmartApiOperation) -> SmartApiOperation:
         @wraps(operation)
         def wrapper(*args: Any, **kwargs: Any) -> dict[str, Any]:
@@ -57,6 +67,8 @@ def call_smart_api(
     retry_config: RetryConfig = DEFAULT_RETRY_CONFIG,
     validate_status: bool = True,
 ) -> dict[str, Any]:
+    """Run a SmartAPI call with retry and normalized failure handling."""
+
     attempts = max(1, retry_config.max_attempts)
     delay = retry_config.initial_delay_seconds
     last_error: AngelOneSmartApiRestBrokerError | None = None
@@ -98,6 +110,8 @@ def validate_smart_api_response(
     *,
     validate_status: bool = True,
 ) -> None:
+    """Validate the minimum response shape expected from SmartAPI."""
+
     if not isinstance(response, dict):
         raise AngelOneSmartApiRestBrokerError(
             message,
@@ -112,6 +126,8 @@ def validate_smart_api_response(
 
 
 def broker_error_handler(message: str, details_builder=None):
+    """Wrap broker-layer exceptions with AngelOne error details."""
+
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -137,6 +153,7 @@ def _should_retry_error(
     error: AngelOneSmartApiRestBrokerError,
     retry_config: RetryConfig,
 ) -> bool:
+    """Return whether a normalized error is retryable."""
     response = error.details.get("response")
     if not isinstance(response, dict):
         return True
@@ -158,6 +175,7 @@ def _should_retry_error(
 
 
 def _is_auth_failure(details: dict[str, Any]) -> bool:
+    """Detect likely SmartAPI authentication failures."""
     response = details.get("response") or details.get("session")
     if not isinstance(response, dict):
         return False

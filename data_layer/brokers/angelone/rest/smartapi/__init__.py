@@ -1,3 +1,5 @@
+"""Focused SmartAPI collaborators used by the AngelOne REST broker."""
+
 from data_layer.brokers.angelone.rest.smartapi.account import (
     AngelOneAccountService,
     SmartApiAccountClient,
