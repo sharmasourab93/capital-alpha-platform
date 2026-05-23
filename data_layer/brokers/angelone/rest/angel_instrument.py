@@ -188,8 +188,9 @@ class AngelOneBroker:
 
         return None
 
-    def get_scrip(self, exchange: str, key: str) -> (AngelOneStock | AngelOneIndex |
-                                                     AngelOneOtherScrip | None):
+    def get_scrip(
+        self, exchange: str, key: str
+    ) -> AngelOneStock | AngelOneIndex | AngelOneOtherScrip | None:
         exchange_data = self.get_exchange(exchange)
         if exchange_data is None:
             return None
@@ -229,6 +230,6 @@ class AngelOneBroker:
 AngelInstrument = AngelOneBroker
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     angel_one = AngelOneBroker.from_url()
     print(angel_one)
