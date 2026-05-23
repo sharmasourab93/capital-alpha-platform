@@ -1,7 +1,9 @@
-from abc import ABC, abstractmethod
+from abc import abstractmethod
+
+from data_layer.abstractions.brokers.account import BrokerAccount
 
 
-class RestBroker(ABC):
+class RestBroker(BrokerAccount):
 
     @abstractmethod
     def get_candles(self, *args, **kwargs): ...

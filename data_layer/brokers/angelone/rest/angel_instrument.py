@@ -59,7 +59,7 @@ class AngelOneOtherScrip(BaseScripData):
         return cls(
             exchange=str(row.get("exch_seg")).upper(),
             instrumenttype=str(row.get("instrumenttype")).upper(),
-            ticksize=row.get("tick_size"),
+            ticksize=int(row.get("tick_size")),
             token=parse_int(row.get("token")),
             symbol=str(row.get("symbol")).upper(),
             name=str(row.get("name")).upper(),
@@ -148,7 +148,7 @@ class AngelOneInstruments:
                 stocks=nse_stocks, indices=nse_indices, others=nse_others
             ),
             bse=AngelOneBSE(
-                stocks=bse_stocks, indices=bse_indices, others=bse_others
+                stocks=bse_others, indices=bse_indices, others=bse_stocks
             ),
         )
 
@@ -188,12 +188,13 @@ class AngelOneBroker:
 
         return None
 
-    def get_scrip(self, exchange: str, key: str) -> BaseScripData | None:
+    def get_scrip(self, exchange: str, key: str) -> (AngelOneStock | AngelOneIndex |
+                                                     AngelOneOtherScrip | None):
         exchange_data = self.get_exchange(exchange)
         if exchange_data is None:
             return None
 
-        key = name.upper()
+        key = key.upper()
 
         return (
             exchange_data.get_stock(key)
@@ -226,3 +227,8 @@ class AngelOneBroker:
 
 
 AngelInstrument = AngelOneBroker
+
+
+if __name__ == '__main__':
+    angel_one = AngelOneBroker.from_url()
+    print(angel_one)
