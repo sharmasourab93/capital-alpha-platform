@@ -42,7 +42,7 @@ class AngelOneStock(BaseScripData):
     def from_row(cls, row: dict[str, Any]) -> "AngelOneStock":
         return cls(
             exchange=str(row.get("exch_seg")).upper(),
-            ticksize=row.get("tick_size"),
+            ticksize=int(row.get("tick_size")),
             symbol=str(row.get("symbol")).upper(),
             name=str(row.get("name")).upper(),
             token=parse_int(row.get("token")),
