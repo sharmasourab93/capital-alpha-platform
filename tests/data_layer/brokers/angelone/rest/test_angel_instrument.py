@@ -1,3 +1,5 @@
+"""Tests for AngelOne instrument parsing and lookup contracts."""
+
 import json
 
 import pytest
@@ -23,6 +25,7 @@ UNKNOWN_INSTRUMENT_TYPE_CONTRACT_SKIP_REASON = (
 
 @pytest.mark.skip(reason=DECIMAL_TICK_SIZE_CONTRACT_SKIP_REASON)
 def test_stock_from_row_normalizes_core_fields_and_token() -> None:
+    """Verify stock rows normalize fields and decimal tick size."""
     stock = AngelOneStock.from_row(
         _row(
             token="2885.0",
@@ -41,6 +44,7 @@ def test_stock_from_row_normalizes_core_fields_and_token() -> None:
 
 
 def test_index_from_row_normalizes_core_fields_and_instrument_type() -> None:
+    """Verify index rows normalize fields and instrument type."""
     index = AngelOneIndex.from_row(
         _row(
             token="99926000",
@@ -60,6 +64,7 @@ def test_index_from_row_normalizes_core_fields_and_instrument_type() -> None:
 
 @pytest.mark.skip(reason=DECIMAL_TICK_SIZE_CONTRACT_SKIP_REASON)
 def test_other_scrip_from_row_normalizes_core_fields() -> None:
+    """Verify other-scrip rows normalize core metadata."""
     other = AngelOneOtherScrip.from_row(
         _row(
             token="12345",
@@ -79,6 +84,7 @@ def test_other_scrip_from_row_normalizes_core_fields() -> None:
 
 @pytest.mark.skip(reason=DECIMAL_TICK_SIZE_CONTRACT_SKIP_REASON)
 def test_instruments_group_equity_rows_by_exchange_and_name() -> None:
+    """Verify equity rows group by exchange and scrip name."""
     instruments = AngelOneInstruments.from_scrip_master_rows(
         [
             _row(token="111", symbol="SBIN-EQ", name="SBIN", exchange="NSE"),
@@ -99,6 +105,7 @@ def test_instruments_group_equity_rows_by_exchange_and_name() -> None:
 
 @pytest.mark.skip(reason=UNKNOWN_INSTRUMENT_TYPE_CONTRACT_SKIP_REASON)
 def test_instruments_group_indices_and_other_scrips_separately() -> None:
+    """Verify index and other rows are grouped separately."""
     instruments = AngelOneInstruments.from_scrip_master_rows(
         [
             _row(
@@ -127,6 +134,7 @@ def test_instruments_group_indices_and_other_scrips_separately() -> None:
 
 @pytest.mark.skip(reason=DECIMAL_TICK_SIZE_CONTRACT_SKIP_REASON)
 def test_unimplemented_exchange_rows_are_ignored() -> None:
+    """Verify unsupported exchange rows are ignored."""
     instruments = AngelOneInstruments.from_scrip_master_rows(
         [
             _row(token="111", symbol="SBIN-EQ", name="SBIN", exchange="NFO"),
@@ -139,6 +147,7 @@ def test_unimplemented_exchange_rows_are_ignored() -> None:
 
 
 def test_from_json_rejects_non_list_payload() -> None:
+    """Verify JSON payloads must contain a list of rows."""
     with pytest.raises(
         ValueError, match="Angel scrip master payload must be a JSON list"
     ):
@@ -147,6 +156,7 @@ def test_from_json_rejects_non_list_payload() -> None:
 
 @pytest.mark.skip(reason=DECIMAL_TICK_SIZE_CONTRACT_SKIP_REASON)
 def test_from_json_builds_instruments_from_bytes_payload() -> None:
+    """Verify bytes JSON payloads build instrument masters."""
     payload = json.dumps(
         [_row(token="2885", symbol="RELIANCE-EQ", name="RELIANCE")]
     ).encode()
@@ -158,6 +168,7 @@ def test_from_json_builds_instruments_from_bytes_payload() -> None:
 
 @pytest.mark.skip(reason=DECIMAL_TICK_SIZE_CONTRACT_SKIP_REASON)
 def test_from_file_builds_instruments(tmp_path) -> None:
+    """Verify local JSON files build instrument masters."""
     path = tmp_path / "angel_scrip_master.json"
     path.write_text(
         json.dumps([_row(token="3045", symbol="SBIN-EQ", name="SBIN")]),
@@ -170,6 +181,7 @@ def test_from_file_builds_instruments(tmp_path) -> None:
 
 
 def test_broker_get_exchange_is_case_insensitive() -> None:
+    """Verify exchange lookup is case-insensitive."""
     broker = AngelInstrument.from_scrip_master_rows([])
 
     assert broker.get_exchange("nse") is broker.instrument_master.nse
@@ -179,6 +191,7 @@ def test_broker_get_exchange_is_case_insensitive() -> None:
 
 @pytest.mark.skip(reason=UNKNOWN_INSTRUMENT_TYPE_CONTRACT_SKIP_REASON)
 def test_broker_get_scrip_resolves_stock_index_and_other_by_name() -> None:
+    """Verify broker lookup resolves stock, index, and other rows."""
     broker = AngelInstrument.from_scrip_master_rows(
         [
             _row(token="111", symbol="SBIN-EQ", name="SBIN", exchange="NSE"),
@@ -213,6 +226,7 @@ def test_broker_get_scrip_resolves_stock_index_and_other_by_name() -> None:
 
 @pytest.mark.skip(reason=DECIMAL_TICK_SIZE_CONTRACT_SKIP_REASON)
 def test_broker_get_scrip_returns_none_for_unknown_exchange_or_key() -> None:
+    """Verify broker lookup returns None for unknown inputs."""
     broker = AngelInstrument.from_scrip_master_rows(
         [_row(token="111", symbol="SBIN-EQ", name="SBIN", exchange="NSE")]
     )
@@ -223,6 +237,7 @@ def test_broker_get_scrip_returns_none_for_unknown_exchange_or_key() -> None:
 
 @pytest.mark.skip(reason=DECIMAL_TICK_SIZE_CONTRACT_SKIP_REASON)
 def test_broker_get_all_scrips_defaults_to_nse_and_includes_indices() -> None:
+    """Verify all-scrip listing defaults to NSE and includes indices."""
     broker = AngelInstrument.from_scrip_master_rows(
         [
             _row(token="111", symbol="SBIN-EQ", name="SBIN", exchange="NSE"),
@@ -243,6 +258,7 @@ def test_broker_get_all_scrips_defaults_to_nse_and_includes_indices() -> None:
 
 
 def test_broker_factory_alias_points_to_broker_class() -> None:
+    """Verify the compatibility alias points to the broker class."""
     assert AngelInstrument is AngelOneBroker
 
 
@@ -258,6 +274,7 @@ def _row(
     instrument_type: str = "",
     tick_size: str = "5.000000",
 ) -> dict[str, str]:
+    """Return a minimal AngelOne scrip-master row."""
     return {
         "token": token,
         "symbol": symbol,

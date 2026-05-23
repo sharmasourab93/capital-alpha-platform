@@ -1,3 +1,5 @@
+"""Tests for the AngelOne REST broker facade."""
+
 import pytest
 
 from data_layer.brokers.angelone.rest.angel_instrument import AngelOneBroker
@@ -18,6 +20,7 @@ from data_layer.brokers.angelone.rest.smartapi.transport import (
 
 
 def test_public_imports_and_aliases_are_stable() -> None:
+    """Verify public SmartAPI imports and aliases remain stable."""
     from data_layer.brokers.angelone.rest.smartapi import (
         SmartApiCredentials as PackageCredentials,
     )
@@ -30,6 +33,8 @@ def test_public_imports_and_aliases_are_stable() -> None:
 def test_broker_construction_does_not_load_instruments_from_network(
     monkeypatch,
 ) -> None:
+    """Ensure broker construction does not fetch instruments eagerly."""
+
     def fail_from_url():
         raise AssertionError("from_url should be lazy")
 
@@ -45,6 +50,7 @@ def test_broker_construction_does_not_load_instruments_from_network(
 
 
 def test_broker_lazily_loads_instruments_when_needed(monkeypatch) -> None:
+    """Ensure instrument data is loaded only on first lookup."""
     instruments = AngelOneBroker.from_scrip_master_rows(
         [_row(token="3045", symbol="SBIN-EQ", name="SBIN")]
     )
@@ -69,6 +75,7 @@ def test_broker_lazily_loads_instruments_when_needed(monkeypatch) -> None:
 
 
 def test_market_data_call_authenticates_once_and_reuses_session() -> None:
+    """Verify market-data calls reuse one authenticated session."""
     client = _SmartApiClientStub()
     broker = _broker(client)
 
@@ -97,6 +104,7 @@ def test_market_data_call_authenticates_once_and_reuses_session() -> None:
 
 
 def test_account_call_authenticates_and_delegates_to_account_service() -> None:
+    """Verify account calls authenticate once and delegate correctly."""
     client = _SmartApiClientStub()
     broker = _broker(client)
 
@@ -125,6 +133,7 @@ def test_account_call_authenticates_and_delegates_to_account_service() -> None:
 
 
 def test_auth_failure_refreshes_session_once_then_retries_operation() -> None:
+    """Verify auth failures trigger one refresh and one retry."""
     client = _SmartApiClientStub()
     client.ltp_auth_failure_once = True
     broker = _broker(client)
@@ -141,6 +150,7 @@ def test_auth_failure_refreshes_session_once_then_retries_operation() -> None:
 
 
 def test_non_auth_failure_does_not_refresh_session() -> None:
+    """Ensure non-auth failures do not refresh the session."""
     client = _SmartApiClientStub()
     client.ltp_failure_response = {
         "status": False,
@@ -159,6 +169,7 @@ def test_non_auth_failure_does_not_refresh_session() -> None:
 
 
 def test_retry_handles_transient_failed_response_without_sleep() -> None:
+    """Verify transient SmartAPI responses are retried."""
     calls = []
 
     def transient_operation():
@@ -182,6 +193,7 @@ def test_retry_handles_transient_failed_response_without_sleep() -> None:
 
 
 def test_retry_does_not_retry_auth_failures() -> None:
+    """Verify auth failures are not retried by generic retry logic."""
     calls = []
 
     def auth_failure():
@@ -199,6 +211,7 @@ def test_retry_does_not_retry_auth_failures() -> None:
 
 
 def test_smart_connect_adapter_maps_snake_case_to_sdk_camel_case() -> None:
+    """Verify the SmartConnect adapter maps SDK method names."""
     raw_client = _RawSmartConnectStub()
     adapter = SmartConnectAdapter(raw_client)
 
@@ -230,6 +243,7 @@ def test_smart_connect_adapter_maps_snake_case_to_sdk_camel_case() -> None:
 
 
 def test_logout_clears_session_state() -> None:
+    """Verify logout clears the stored SmartAPI session."""
     client = _SmartApiClientStub()
     broker = _broker(client)
 
@@ -244,6 +258,7 @@ def test_logout_clears_session_state() -> None:
 
 
 def _broker(client: "_SmartApiClientStub") -> AngelRestBroker:
+    """Create a broker with deterministic fake dependencies."""
     return AngelRestBroker(
         credentials=_credentials(),
         client=client,
@@ -255,6 +270,7 @@ def _broker(client: "_SmartApiClientStub") -> AngelRestBroker:
 
 
 def _credentials() -> SmartApiCredentials:
+    """Return deterministic SmartAPI credentials for tests."""
     return SmartApiCredentials(
         api_key="api-key",
         client_code="client",
@@ -272,6 +288,7 @@ def _row(
     instrument_type: str = "",
     tick_size: str = "5",
 ) -> dict[str, str]:
+    """Return a minimal AngelOne scrip-master row."""
     return {
         "token": token,
         "symbol": symbol,
@@ -286,6 +303,8 @@ def _row(
 
 
 class _SmartApiClientStub:
+    """Fake SmartAPI client used by broker facade tests."""
+
     def __init__(self) -> None:
         self.calls = []
         self.ltp_auth_failure_once = False
@@ -347,6 +366,8 @@ class _SmartApiClientStub:
 
 
 class _RawSmartConnectStub:
+    """Fake camelCase SmartConnect SDK client."""
+
     def __init__(self) -> None:
         self.calls = []
 

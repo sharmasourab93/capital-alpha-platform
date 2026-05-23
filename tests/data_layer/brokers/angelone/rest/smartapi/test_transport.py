@@ -1,3 +1,5 @@
+"""Tests for AngelOne SmartAPI transport adapters."""
+
 import pytest
 
 from data_layer.brokers.angelone.rest.smartapi.errors import (
@@ -15,6 +17,7 @@ from data_layer.brokers.angelone.rest.smartapi.transport import (
 
 
 def test_transport_delegates_market_data_calls() -> None:
+    """Verify transport delegates market-data calls with payloads."""
     client = _Client()
     transport = SmartApiTransport(client)
 
@@ -44,6 +47,7 @@ def test_transport_delegates_market_data_calls() -> None:
 
 
 def test_transport_rejects_failed_smartapi_response() -> None:
+    """Verify failed transport responses raise broker errors."""
     client = _Client(ltp_response={"status": False, "message": "bad token"})
     transport = SmartApiTransport(client)
 
@@ -54,6 +58,7 @@ def test_transport_rejects_failed_smartapi_response() -> None:
 
 
 def test_smart_connect_adapter_maps_camel_case_sdk_methods() -> None:
+    """Verify the SDK adapter maps camelCase methods."""
     raw_client = _RawClient()
     adapter = SmartConnectAdapter(raw_client)
 
@@ -85,6 +90,8 @@ def test_smart_connect_adapter_maps_camel_case_sdk_methods() -> None:
 
 
 class _Client:
+    """Fake snake-case SmartAPI client."""
+
     def __init__(self, ltp_response=None) -> None:
         self.calls = []
         self._ltp_response = ltp_response
@@ -103,6 +110,8 @@ class _Client:
 
 
 class _RawClient:
+    """Fake camelCase SmartConnect SDK client."""
+
     def __init__(self) -> None:
         self.calls = []
 

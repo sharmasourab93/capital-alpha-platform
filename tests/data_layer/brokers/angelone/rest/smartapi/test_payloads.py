@@ -1,3 +1,5 @@
+"""Tests for SmartAPI payload builders."""
+
 import pytest
 from data_layer.abstractions.instruments import BaseScripData
 
@@ -13,6 +15,7 @@ from data_layer.brokers.angelone.rest.smartapi.payloads import (
 
 
 def test_candle_request_builds_smartapi_payload() -> None:
+    """Verify candle requests produce SmartAPI payload keys."""
     request = CandleRequest.from_scrip(
         _Scrip(exchange="NSE", token=3045, symbol="SBIN-EQ", name="SBIN"),
         "ONE_MINUTE",
@@ -30,6 +33,7 @@ def test_candle_request_builds_smartapi_payload() -> None:
 
 
 def test_ltp_request_uses_trading_symbol_and_token() -> None:
+    """Verify LTP requests carry exchange, symbol, and token."""
     request = LtpRequest.from_scrip(
         _Scrip(exchange="NSE", token=3045, symbol="SBIN-EQ", name="SBIN")
     )
@@ -40,6 +44,7 @@ def test_ltp_request_uses_trading_symbol_and_token() -> None:
 
 
 def test_quote_request_uppercases_mode_and_groups_tokens() -> None:
+    """Verify quote requests normalize mode and token grouping."""
     scrips = [
         _Scrip(exchange="NSE", token=3045, symbol="SBIN-EQ", name="SBIN"),
         _Scrip(
@@ -57,6 +62,7 @@ def test_quote_request_uppercases_mode_and_groups_tokens() -> None:
 
 
 def test_invalid_quote_mode_raises_broker_error() -> None:
+    """Verify unsupported quote modes raise broker errors."""
     with pytest.raises(AngelOneSmartApiRestBrokerError) as exc_info:
         validate_quote_mode("DEPTH")
 
@@ -64,6 +70,9 @@ def test_invalid_quote_mode_raises_broker_error() -> None:
 
 
 class _Scrip(BaseScripData):
+    """Minimal scrip model for payload tests."""
+
     @classmethod
     def from_row(cls, row):
+        """Block row parsing in payload-only tests."""
         raise NotImplementedError

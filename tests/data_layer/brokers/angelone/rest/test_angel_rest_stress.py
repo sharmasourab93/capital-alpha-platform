@@ -1,3 +1,5 @@
+"""Stress-style tests for repeated AngelOne broker usage."""
+
 from data_layer.brokers.angelone.rest.angel_instrument import AngelOneBroker
 from data_layer.brokers.angelone.rest.angel_rest_broker import (
     AngelRestBroker,
@@ -8,6 +10,7 @@ from data_layer.brokers.angelone.rest.angel_rest_broker import (
 def test_broker_handles_repeated_market_and_account_calls_with_one_session() -> (
     None
 ):
+    """Verify repeated broker calls reuse a single session."""
     client = _StressSmartApiClient()
     broker = _broker(client)
 
@@ -41,6 +44,7 @@ def test_broker_handles_repeated_market_and_account_calls_with_one_session() -> 
 
 
 def test_broker_recovers_from_repeated_auth_failures_during_stress() -> None:
+    """Verify repeated auth failures refresh and recover."""
     client = _StressSmartApiClient(auth_failure_ltp_calls={1, 50, 100})
     broker = _broker(client)
 
@@ -55,6 +59,7 @@ def test_broker_recovers_from_repeated_auth_failures_during_stress() -> None:
 def test_broker_lazily_loads_instruments_once_under_repeated_access(
     monkeypatch,
 ) -> None:
+    """Verify repeated access loads instruments only once."""
     client = _StressSmartApiClient()
     instruments = _instruments()
     load_calls = []
@@ -80,6 +85,7 @@ def test_broker_lazily_loads_instruments_once_under_repeated_access(
 
 
 def _broker(client: "_StressSmartApiClient") -> AngelRestBroker:
+    """Create a broker with stress-test fakes."""
     return AngelRestBroker(
         credentials=_credentials(),
         client=client,
@@ -89,6 +95,7 @@ def _broker(client: "_StressSmartApiClient") -> AngelRestBroker:
 
 
 def _credentials() -> SmartApiCredentials:
+    """Return deterministic SmartAPI credentials for stress tests."""
     return SmartApiCredentials(
         api_key="api-key",
         client_code="client",
@@ -98,6 +105,7 @@ def _credentials() -> SmartApiCredentials:
 
 
 def _instruments() -> AngelOneBroker:
+    """Return a small deterministic instrument master."""
     return AngelOneBroker.from_scrip_master_rows(
         [
             _row(token="3045", symbol="SBIN-EQ", name="SBIN"),
@@ -115,6 +123,7 @@ def _row(
     instrument_type: str = "",
     tick_size: str = "5",
 ) -> dict[str, str]:
+    """Return a minimal AngelOne scrip-master row."""
     return {
         "token": token,
         "symbol": symbol,
@@ -129,12 +138,15 @@ def _row(
 
 
 class _StressSmartApiClient:
+    """Fake SmartAPI client that records repeated calls."""
+
     def __init__(self, auth_failure_ltp_calls=None) -> None:
         self.calls = []
         self._ltp_calls = 0
         self._auth_failure_ltp_calls = set(auth_failure_ltp_calls or [])
 
     def call_count(self, method_name: str) -> int:
+        """Return the number of calls recorded for a method."""
         return sum(call[0] == method_name for call in self.calls)
 
     def generate_session(

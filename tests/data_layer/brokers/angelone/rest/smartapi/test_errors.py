@@ -1,3 +1,5 @@
+"""Tests for AngelOne SmartAPI error handling."""
+
 import pytest
 
 from data_layer.brokers.angelone.rest.smartapi.errors import (
@@ -10,6 +12,7 @@ from data_layer.brokers.angelone.rest.smartapi.errors import (
 
 
 def test_validate_response_rejects_non_dict_response() -> None:
+    """Verify non-dict SmartAPI responses are rejected."""
     with pytest.raises(AngelOneSmartApiRestBrokerError) as exc_info:
         validate_smart_api_response([], "bad response")
 
@@ -17,6 +20,7 @@ def test_validate_response_rejects_non_dict_response() -> None:
 
 
 def test_validate_response_rejects_failed_status() -> None:
+    """Verify failed SmartAPI status raises a broker error."""
     response = {"status": False, "message": "invalid token"}
 
     with pytest.raises(AngelOneSmartApiRestBrokerError) as exc_info:
@@ -27,6 +31,7 @@ def test_validate_response_rejects_failed_status() -> None:
 
 
 def test_validate_response_can_skip_status_validation() -> None:
+    """Verify callers can skip status checks for logout."""
     validate_smart_api_response(
         {"status": False, "message": "logout failed upstream"},
         "logout",
@@ -35,6 +40,7 @@ def test_validate_response_can_skip_status_validation() -> None:
 
 
 def test_call_smart_api_retries_transient_response(monkeypatch) -> None:
+    """Verify transient responses are retried with backoff."""
     sleeps = []
     attempts = []
 
@@ -69,6 +75,7 @@ def test_call_smart_api_retries_transient_response(monkeypatch) -> None:
 
 
 def test_call_smart_api_does_not_retry_auth_failure(monkeypatch) -> None:
+    """Verify auth failures are not retried by generic retry logic."""
     sleeps = []
     attempts = []
     monkeypatch.setattr(
@@ -92,6 +99,8 @@ def test_call_smart_api_does_not_retry_auth_failure(monkeypatch) -> None:
 
 
 def test_decorator_wraps_exception_and_preserves_function_metadata() -> None:
+    """Verify the decorator normalizes exceptions and preserves names."""
+
     @smart_api_error_handler("decorated failure")
     def operation():
         raise RuntimeError("socket reset")

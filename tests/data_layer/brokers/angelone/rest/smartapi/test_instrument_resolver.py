@@ -1,3 +1,5 @@
+"""Tests for AngelOne instrument resolution."""
+
 import pytest
 
 from data_layer.brokers.angelone.rest.angel_instrument import AngelOneBroker
@@ -10,6 +12,7 @@ from data_layer.brokers.angelone.rest.smartapi.instrument_resolver import (
 
 
 def test_resolver_finds_scrips_by_name_case_insensitively() -> None:
+    """Verify name lookups are case-insensitive."""
     resolver = AngelInstrumentResolver(_instruments())
 
     scrip = resolver.get_scrip("nse", "sbin")
@@ -22,6 +25,7 @@ def test_resolver_finds_scrips_by_name_case_insensitively() -> None:
 
 
 def test_resolver_keeps_exchange_lookup_isolated() -> None:
+    """Verify identical names resolve within the requested exchange."""
     resolver = AngelInstrumentResolver(_instruments())
 
     nse_scrip = resolver.require_scrip("NSE", "SBIN")
@@ -34,6 +38,7 @@ def test_resolver_keeps_exchange_lookup_isolated() -> None:
 
 
 def test_resolver_finds_indices_by_name() -> None:
+    """Verify index names resolve through the same lookup path."""
     resolver = AngelInstrumentResolver(_instruments())
 
     scrip = resolver.require_scrip("NSE", "NIFTY")
@@ -43,6 +48,7 @@ def test_resolver_finds_indices_by_name() -> None:
 
 
 def test_resolver_returns_none_for_unknown_exchange() -> None:
+    """Verify unknown exchanges return empty lookup results."""
     resolver = AngelInstrumentResolver(_instruments())
 
     assert resolver.get_scrip("MCX", "SBIN") is None
@@ -50,6 +56,7 @@ def test_resolver_returns_none_for_unknown_exchange() -> None:
 
 
 def test_resolver_require_scrip_raises_for_unknown_name() -> None:
+    """Verify required lookup raises for unknown names."""
     resolver = AngelInstrumentResolver(_instruments())
 
     with pytest.raises(AngelOneSmartApiRestBrokerError) as exc_info:
@@ -59,6 +66,7 @@ def test_resolver_require_scrip_raises_for_unknown_name() -> None:
 
 
 def test_resolver_require_scrips_accepts_single_name_and_name_list() -> None:
+    """Verify required lookup accepts one name or many names."""
     resolver = AngelInstrumentResolver(_instruments())
 
     single = resolver.require_scrips("NSE", "SBIN")
@@ -69,6 +77,7 @@ def test_resolver_require_scrips_accepts_single_name_and_name_list() -> None:
 
 
 def test_resolver_require_scrips_rejects_empty_input() -> None:
+    """Verify required multi-lookup rejects empty input."""
     resolver = AngelInstrumentResolver(_instruments())
 
     with pytest.raises(AngelOneSmartApiRestBrokerError) as exc_info:
@@ -78,6 +87,7 @@ def test_resolver_require_scrips_rejects_empty_input() -> None:
 
 
 def _instruments() -> AngelOneBroker:
+    """Return deterministic instruments for resolver tests."""
     rows = [
         {
             "token": "3045",

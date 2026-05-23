@@ -1,3 +1,5 @@
+"""Tests for AngelOne SmartAPI session management."""
+
 import pytest
 
 from data_layer.brokers.angelone.rest.smartapi.errors import (
@@ -10,6 +12,7 @@ from data_layer.brokers.angelone.rest.smartapi.session import (
 
 
 def test_authenticate_generates_totp_and_stores_session() -> None:
+    """Verify authentication generates TOTP and stores the session."""
     client = _SessionClient()
     manager = AngelOneSessionManager(
         client,
@@ -27,6 +30,7 @@ def test_authenticate_generates_totp_and_stores_session() -> None:
 
 
 def test_ensure_authenticated_only_authenticates_when_missing() -> None:
+    """Verify ensure_authenticated reuses an existing session."""
     client = _SessionClient()
     manager = AngelOneSessionManager(
         client,
@@ -41,6 +45,7 @@ def test_ensure_authenticated_only_authenticates_when_missing() -> None:
 
 
 def test_refresh_clears_and_regenerates_session() -> None:
+    """Verify refresh clears and recreates the session."""
     client = _SessionClient()
     manager = AngelOneSessionManager(
         client,
@@ -59,6 +64,7 @@ def test_refresh_clears_and_regenerates_session() -> None:
 
 
 def test_terminate_clears_session_state() -> None:
+    """Verify terminate clears local session state."""
     client = _SessionClient()
     manager = AngelOneSessionManager(
         client,
@@ -75,6 +81,7 @@ def test_terminate_clears_session_state() -> None:
 
 
 def test_authenticate_rejects_missing_session_data() -> None:
+    """Verify missing session data is rejected."""
     client = _SessionClient(session_response={"status": True})
     manager = AngelOneSessionManager(
         client,
@@ -87,6 +94,7 @@ def test_authenticate_rejects_missing_session_data() -> None:
 
 
 def _credentials() -> SmartApiCredentials:
+    """Return deterministic SmartAPI credentials for session tests."""
     return SmartApiCredentials(
         api_key="api-key",
         client_code="client",
@@ -96,6 +104,8 @@ def _credentials() -> SmartApiCredentials:
 
 
 class _SessionClient:
+    """Fake SmartAPI session client."""
+
     def __init__(self, session_response=None) -> None:
         self.calls = []
         self._session_response = session_response
