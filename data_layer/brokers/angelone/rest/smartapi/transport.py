@@ -34,13 +34,69 @@ class SmartApiClient(Protocol):
         self, exchange: str, tradingsymbol: str, symboltoken: str
     ) -> dict[str, Any]: ...
 
+    def get_profile(self) -> dict[str, Any]: ...
+
+    def rms_limit(self) -> dict[str, Any]: ...
+
+    def holdings(self) -> dict[str, Any]: ...
+
+    def position(self) -> dict[str, Any]: ...
+
+    def order_book(self) -> dict[str, Any]: ...
+
+    def trade_book(self) -> dict[str, Any]: ...
+
 
 SmartApiClientFactory = Callable[[str], SmartApiClient]
 TransportOperation = Callable[..., dict[str, Any]]
 
 
+class SmartConnectAdapter:
+    def __init__(self, client: SmartConnect) -> None:
+        self._client = client
+
+    def generate_session(
+        self, client_code: str, password: str, totp: str
+    ) -> dict[str, Any]:
+        return self._client.generateSession(client_code, password, totp)
+
+    def terminate_session(self, client_code: str) -> dict[str, Any]:
+        return self._client.terminateSession(client_code)
+
+    def get_candle_data(self, historic_data_params: dict[str, str]) -> dict[str, Any]:
+        return self._client.getCandleData(historic_data_params)
+
+    def get_market_data(
+        self, mode: str, exchange_tokens: dict[str, list[str]]
+    ) -> dict[str, Any]:
+        return self._client.getMarketData(mode, exchange_tokens)
+
+    def ltp_data(
+        self, exchange: str, tradingsymbol: str, symboltoken: str
+    ) -> dict[str, Any]:
+        return self._client.ltpData(exchange, tradingsymbol, symboltoken)
+
+    def get_profile(self) -> dict[str, Any]:
+        return self._client.getProfile()
+
+    def rms_limit(self) -> dict[str, Any]:
+        return self._client.rmsLimit()
+
+    def holdings(self) -> dict[str, Any]:
+        return self._client.holding()
+
+    def position(self) -> dict[str, Any]:
+        return self._client.position()
+
+    def order_book(self) -> dict[str, Any]:
+        return self._client.orderBook()
+
+    def trade_book(self) -> dict[str, Any]:
+        return self._client.tradeBook()
+
+
 def default_smart_api_client_factory(api_key: str) -> SmartApiClient:
-    return SmartConnect(api_key=api_key)
+    return SmartConnectAdapter(SmartConnect(api_key=api_key))
 
 
 def smart_api_transport_error(
@@ -95,6 +151,7 @@ class SmartApiTransport:
 __all__ = [
     "SmartApiClient",
     "SmartApiClientFactory",
+    "SmartConnectAdapter",
     "SmartApiTransport",
     "default_smart_api_client_factory",
 ]
