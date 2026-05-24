@@ -5,6 +5,7 @@ from data_layer.brokers.rest_registry import (
     create_broker_rest_service,
     create_default_rest_registry,
     create_rest_registry,
+    get_available_rest_brokers,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "create_broker_rest_service",
     "create_default_rest_registry",
     "create_rest_registry",
+    "get_available_rest_brokers",
 ]

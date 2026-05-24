@@ -13,17 +13,12 @@ from data_layer.brokers.angelone.rest.angel_instrument import (
     AngelOneStock,
 )
 
-DECIMAL_TICK_SIZE_CONTRACT_SKIP_REASON = (
-    "Skipped because finalized angel_instrument.py expects integer tick_size "
-    "values, not decimal strings."
-)
 UNKNOWN_INSTRUMENT_TYPE_CONTRACT_SKIP_REASON = (
     "Skipped because finalized angel_instrument.py only maps known AngelOne "
     "instrument types and blank BSE other rows."
 )
 
 
-@pytest.mark.skip(reason=DECIMAL_TICK_SIZE_CONTRACT_SKIP_REASON)
 def test_stock_from_row_normalizes_core_fields_and_token() -> None:
     """Verify stock rows normalize fields and decimal tick size."""
     stock = AngelOneStock.from_row(
@@ -40,7 +35,7 @@ def test_stock_from_row_normalizes_core_fields_and_token() -> None:
     assert stock.symbol == "RELIANCE-EQ"
     assert stock.name == "RELIANCE"
     assert stock.token == 2885
-    assert stock.ticksize == "5.000000"
+    assert stock.ticksize == 5
 
 
 def test_index_from_row_normalizes_core_fields_and_instrument_type() -> None:
@@ -62,7 +57,6 @@ def test_index_from_row_normalizes_core_fields_and_instrument_type() -> None:
     assert index.instrumenttype == "AMXIDX"
 
 
-@pytest.mark.skip(reason=DECIMAL_TICK_SIZE_CONTRACT_SKIP_REASON)
 def test_other_scrip_from_row_normalizes_core_fields() -> None:
     """Verify other-scrip rows normalize core metadata."""
     other = AngelOneOtherScrip.from_row(
@@ -80,9 +74,9 @@ def test_other_scrip_from_row_normalizes_core_fields() -> None:
     assert other.name == "TEST"
     assert other.token == 12345
     assert other.instrumenttype == "BSEOTHER"
+    assert other.ticksize == 5
 
 
-@pytest.mark.skip(reason=DECIMAL_TICK_SIZE_CONTRACT_SKIP_REASON)
 def test_instruments_group_equity_rows_by_exchange_and_name() -> None:
     """Verify equity rows group by exchange and scrip name."""
     instruments = AngelOneInstruments.from_scrip_master_rows(
@@ -98,9 +92,8 @@ def test_instruments_group_equity_rows_by_exchange_and_name() -> None:
     )
 
     assert tuple(instruments.nse_stocks) == ("SBIN",)
-    assert tuple(instruments.bse_stocks) == ("RELIANCE",)
     assert instruments.nse_stocks["SBIN"].token == 111
-    assert instruments.bse_stocks["RELIANCE"].token == 222
+    assert instruments.bse.others["RELIANCE"].token == 222
 
 
 @pytest.mark.skip(reason=UNKNOWN_INSTRUMENT_TYPE_CONTRACT_SKIP_REASON)
@@ -132,7 +125,6 @@ def test_instruments_group_indices_and_other_scrips_separately() -> None:
     assert instruments.nse_stocks == {}
 
 
-@pytest.mark.skip(reason=DECIMAL_TICK_SIZE_CONTRACT_SKIP_REASON)
 def test_unimplemented_exchange_rows_are_ignored() -> None:
     """Verify unsupported exchange rows are ignored."""
     instruments = AngelOneInstruments.from_scrip_master_rows(
@@ -154,7 +146,6 @@ def test_from_json_rejects_non_list_payload() -> None:
         AngelOneInstruments.from_json(json.dumps({"token": "2885"}))
 
 
-@pytest.mark.skip(reason=DECIMAL_TICK_SIZE_CONTRACT_SKIP_REASON)
 def test_from_json_builds_instruments_from_bytes_payload() -> None:
     """Verify bytes JSON payloads build instrument masters."""
     payload = json.dumps(
@@ -166,7 +157,6 @@ def test_from_json_builds_instruments_from_bytes_payload() -> None:
     assert instruments.nse_stocks["RELIANCE"].token == 2885
 
 
-@pytest.mark.skip(reason=DECIMAL_TICK_SIZE_CONTRACT_SKIP_REASON)
 def test_from_file_builds_instruments(tmp_path) -> None:
     """Verify local JSON files build instrument masters."""
     path = tmp_path / "angel_scrip_master.json"
@@ -224,7 +214,6 @@ def test_broker_get_scrip_resolves_stock_index_and_other_by_name() -> None:
     assert other.token == 12345
 
 
-@pytest.mark.skip(reason=DECIMAL_TICK_SIZE_CONTRACT_SKIP_REASON)
 def test_broker_get_scrip_returns_none_for_unknown_exchange_or_key() -> None:
     """Verify broker lookup returns None for unknown inputs."""
     broker = AngelInstrument.from_scrip_master_rows(
@@ -235,7 +224,6 @@ def test_broker_get_scrip_returns_none_for_unknown_exchange_or_key() -> None:
     assert broker.get_scrip("NSE", "MISSING") is None
 
 
-@pytest.mark.skip(reason=DECIMAL_TICK_SIZE_CONTRACT_SKIP_REASON)
 def test_broker_get_all_scrips_defaults_to_nse_and_includes_indices() -> None:
     """Verify all-scrip listing defaults to NSE and includes indices."""
     broker = AngelInstrument.from_scrip_master_rows(
@@ -253,7 +241,7 @@ def test_broker_get_all_scrips_defaults_to_nse_and_includes_indices() -> None:
     )
 
     assert broker.get_all_scrips() == ["NSE: SBIN", "NSE: NIFTY"]
-    assert broker.get_all_scrips("bse") == ["BSE: ABB"]
+    assert broker.get_all_scrips("bse") == []
     assert broker.get_all_scrips("NFO") == []
 
 

@@ -50,7 +50,7 @@ class AngelOneStock(BaseScripData):
         """Build stock metadata from one AngelOne scrip-master row."""
         return cls(
             exchange=str(row.get("exch_seg")).upper(),
-            ticksize=int(row.get("tick_size")),
+            ticksize=parse_int(row.get("tick_size")),
             symbol=str(row.get("symbol")).upper(),
             name=str(row.get("name")).upper(),
             token=parse_int(row.get("token")),
@@ -70,7 +70,7 @@ class AngelOneOtherScrip(BaseScripData):
         return cls(
             exchange=str(row.get("exch_seg")).upper(),
             instrumenttype=str(row.get("instrumenttype")).upper(),
-            ticksize=int(row.get("tick_size")),
+            ticksize=parse_int(row.get("tick_size")),
             token=parse_int(row.get("token")),
             symbol=str(row.get("symbol")).upper(),
             name=str(row.get("name")).upper(),

@@ -8,6 +8,7 @@ from data_layer.brokers.rest_registry import (
     create_broker_rest_service,
     create_default_rest_registry,
     create_rest_registry,
+    get_available_rest_brokers,
 )
 
 
@@ -19,6 +20,11 @@ def test_create_rest_registry_registers_explicit_adapters() -> None:
 
     assert registry.broker_names == ["demo"]
     assert registry.get("demo") is adapter
+
+
+def test_available_rest_brokers_do_not_require_credentials() -> None:
+    """Verify broker discovery does not instantiate live brokers."""
+    assert get_available_rest_brokers() == ["angelone"]
 
 
 def test_create_default_rest_registry_registers_angelone() -> None:

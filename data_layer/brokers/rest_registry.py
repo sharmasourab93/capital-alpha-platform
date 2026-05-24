@@ -12,6 +12,13 @@ from data_layer.brokers.canonical.ports import RestBrokerPort
 from data_layer.brokers.canonical.registry import BrokerRegistry
 from data_layer.brokers.canonical.service import BrokerRestService
 
+AVAILABLE_REST_BROKERS = ("angelone",)
+
+
+def get_available_rest_brokers() -> list[str]:
+    """Return broker names supported by the REST registry."""
+    return list(AVAILABLE_REST_BROKERS)
+
 
 def create_angelone_rest_adapter(
     broker: AngelRestBroker | None = None,
@@ -53,8 +60,10 @@ def create_broker_rest_service(
 
 
 __all__ = [
+    "AVAILABLE_REST_BROKERS",
     "create_angelone_rest_adapter",
     "create_broker_rest_service",
     "create_default_rest_registry",
     "create_rest_registry",
+    "get_available_rest_brokers",
 ]
