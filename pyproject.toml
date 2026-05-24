@@ -2,4 +2,19 @@
 name = "capital-alpha-platform"
 version = "0.1.0"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "black==26.3.1",
+    "fastapi>=0.116.0",
+    "isort==9.0.0a3",
+    "logzero>=1.7.0",
+    "pre-commit==4.6.0",
+    "pycryptodome>=3.23.0",
+    "pyotp>=2.9.0",
+    "python-dotenv>=1.2.2",
+    "smartapi-python>=1.5.5",
+    "uvicorn>=0.35.0",
+    "uv==0.11.8",
+    "websocket-client>=1.9.0",
+    "pandas==3.0.1",
+    "pytest==9.0.3",
+]
