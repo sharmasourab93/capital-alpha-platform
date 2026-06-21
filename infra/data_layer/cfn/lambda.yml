@@ -104,6 +104,44 @@ Parameters:
       - ERROR
     Description: Application log level.
 
+  PythonUnbuffered:
+    Type: String
+    Default: "1"
+    AllowedValues:
+      - "0"
+      - "1"
+    Description: Enables unbuffered Python stdout and stderr when set to 1.
+
+  AngelOneApiKey:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: AngelOne API key.
+
+  AngelOneApiSecret:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: AngelOne API secret.
+
+  AngelOneClientCode:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: AngelOne client code.
+
+  AngelOnePassword:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: AngelOne password.
+
+  AngelOneTotpSecret:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: AngelOne TOTP secret.
+
   AttachToVpc:
     Type: String
     Default: "true"
@@ -209,6 +247,12 @@ Resources:
           PROJECT_NAME: !Ref ProjectName
           ENVIRONMENT_NAME: !Ref EnvironmentName
           LOG_LEVEL: !Ref LogLevel
+          PYTHONUNBUFFERED: !Ref PythonUnbuffered
+          ANGELONE_API_KEY: !Ref AngelOneApiKey
+          ANGELONE_API_SECRET: !Ref AngelOneApiSecret
+          ANGELONE_CLIENTCODE: !Ref AngelOneClientCode
+          ANGELONE_PASSWORD: !Ref AngelOnePassword
+          ANGELONE_TOTP_SECRET: !Ref AngelOneTotpSecret
       VpcConfig: !If
         - AttachLambdaToVpc
         - SecurityGroupIds:
