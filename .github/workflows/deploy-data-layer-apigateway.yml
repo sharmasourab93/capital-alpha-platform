@@ -87,6 +87,32 @@ jobs:
             'walk(if type == "string" then gsub("__LAMBDA_INVOKE_URI__"; $invoke_uri) else . end)' \
             "$SOURCE_OPENAPI" > "$RENDERED_OPENAPI"
 
+      - name: Validate rendered OpenAPI document
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SOURCE_OPENAPI="data_layer/openapi/data-layer-rest.openapi.json"
+          RENDERED_OPENAPI="data-layer-rest.openapi.rendered.json"
+          LAMBDA_ARN="${{ steps.stack_outputs.outputs.lambda_arn }}"
+
+          if ! grep -q "__LAMBDA_INVOKE_URI__" "$SOURCE_OPENAPI"; then
+            echo "::error::Source OpenAPI does not contain __LAMBDA_INVOKE_URI__ placeholder."
+            exit 1
+          fi
+
+          if grep -q "__LAMBDA_INVOKE_URI__" "$RENDERED_OPENAPI"; then
+            echo "::error::Rendered OpenAPI still contains __LAMBDA_INVOKE_URI__ placeholder."
+            exit 1
+          fi
+
+          if ! grep -q "$LAMBDA_ARN" "$RENDERED_OPENAPI"; then
+            echo "::error::Rendered OpenAPI does not contain the resolved Lambda ARN."
+            exit 1
+          fi
+
+          jq empty "$RENDERED_OPENAPI"
+
       - name: Check rendered OpenAPI diff
         id: openapi_diff
         shell: bash
