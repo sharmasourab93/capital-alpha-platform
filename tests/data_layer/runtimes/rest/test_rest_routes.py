@@ -42,13 +42,13 @@ from data_layer.runtimes.rest.schemas import (
 )
 
 
-# @pytest.skip
+@pytest.skip
 def test_app_registers_expected_routes() -> None:
     """Verify the app includes the agreed REST routes."""
     app = create_app()
     paths = {getattr(route, "path", "") for route in app.routes}
 
-    # assert "/health" in paths
+    assert "/health" in paths
     assert "/brokers" in paths
     assert "/market/brokers" in paths
     assert "/market/{broker}/{exchange}/intervals" in paths
