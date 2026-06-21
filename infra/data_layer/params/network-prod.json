@@ -1,0 +1,50 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "capital-alpha"
+  },
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "prod"
+  },
+  {
+    "ParameterKey": "VpcCidr",
+    "ParameterValue": "10.42.0.0/16"
+  },
+  {
+    "ParameterKey": "PublicSubnetACidr",
+    "ParameterValue": "10.42.0.0/24"
+  },
+  {
+    "ParameterKey": "PublicSubnetBCidr",
+    "ParameterValue": "10.42.1.0/24"
+  },
+  {
+    "ParameterKey": "PrivateSubnetACidr",
+    "ParameterValue": "10.42.10.0/24"
+  },
+  {
+    "ParameterKey": "PrivateSubnetBCidr",
+    "ParameterValue": "10.42.11.0/24"
+  },
+  {
+    "ParameterKey": "NatGatewayMode",
+    "ParameterValue": "PerAz"
+  },
+  {
+    "ParameterKey": "AllowedHttpsEgressCidr1",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "AllowedHttpsEgressCidr2",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "AllowedHttpsEgressCidr3",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "AllowedHttpsEgressPrefixListId1",
+    "ParameterValue": ""
+  }
+]
