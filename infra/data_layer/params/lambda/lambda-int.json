@@ -1,0 +1,70 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "capital-alpha"
+  },
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "int"
+  },
+  {
+    "ParameterKey": "FunctionNameSuffix",
+    "ParameterValue": "data-layer-rest"
+  },
+  {
+    "ParameterKey": "FunctionDescription",
+    "ParameterValue": "Capital Alpha int data layer REST Lambda."
+  },
+  {
+    "ParameterKey": "Runtime",
+    "ParameterValue": "python3.13"
+  },
+  {
+    "ParameterKey": "Handler",
+    "ParameterValue": "data_layer.runtimes.rest.lambda_handler.handler"
+  },
+  {
+    "ParameterKey": "CodeS3BucketName",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "CodeS3Key",
+    "ParameterValue": "lambda/data-layer-rest/latest.zip"
+  },
+  {
+    "ParameterKey": "CodeS3ObjectVersion",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "MemorySize",
+    "ParameterValue": "256"
+  },
+  {
+    "ParameterKey": "TimeoutSeconds",
+    "ParameterValue": "20"
+  },
+  {
+    "ParameterKey": "ReservedConcurrentExecutions",
+    "ParameterValue": "10"
+  },
+  {
+    "ParameterKey": "LogRetentionDays",
+    "ParameterValue": "30"
+  },
+  {
+    "ParameterKey": "LogLevel",
+    "ParameterValue": "INFO"
+  },
+  {
+    "ParameterKey": "AttachToVpc",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "SecretsManagerSecretArn",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "ApiGatewaySourceArn",
+    "ParameterValue": ""
+  }
+]
