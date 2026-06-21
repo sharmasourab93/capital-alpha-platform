@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
-
 from data_layer.brokers.angelone.rest.smartapi.errors import (
     AngelOneSmartApiRestBrokerError,
 )
@@ -16,6 +13,8 @@ from data_layer.brokers.canonical.errors import (
     BrokerValidationError,
     CanonicalBrokerError,
 )
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 
 logger = logging.getLogger(__name__)
 

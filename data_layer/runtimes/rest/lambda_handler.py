@@ -13,6 +13,6 @@ except ImportError as exc:  # pragma: no cover
 from data_layer.runtimes.rest.app import create_app
 
 app = create_app()
-handler = Mangum(app)
+handler = Mangum(app, lifespan="off")
 
 __all__ = ["app", "handler"]
