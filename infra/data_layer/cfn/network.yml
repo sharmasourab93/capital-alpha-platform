@@ -1,0 +1,409 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: VPC, private subnets, NAT egress, and controlled workload egress for Capital Alpha.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: capital-alpha
+    AllowedValues:
+      - capital-alpha
+    Description: Project prefix used to name resources.
+
+  EnvironmentName:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - int
+      - prod
+    Description: Deployment environment.
+
+  VpcCidr:
+    Type: String
+    Default: 10.40.0.0/16
+    AllowedPattern: "^([0-9]{1,3}\\.){3}[0-9]{1,3}/(1[6-9]|2[0-8])$"
+    Description: CIDR block for the VPC.
+
+  PublicSubnetACidr:
+    Type: String
+    Default: 10.40.0.0/24
+    Description: CIDR block for public subnet A.
+
+  PublicSubnetBCidr:
+    Type: String
+    Default: 10.40.1.0/24
+    Description: CIDR block for public subnet B.
+
+  PrivateSubnetACidr:
+    Type: String
+    Default: 10.40.10.0/24
+    Description: CIDR block for private subnet A.
+
+  PrivateSubnetBCidr:
+    Type: String
+    Default: 10.40.11.0/24
+    Description: CIDR block for private subnet B.
+
+  NatGatewayMode:
+    Type: String
+    Default: Single
+    AllowedValues:
+      - Single
+      - PerAz
+    Description: Single is cheaper; PerAz gives better availability.
+
+  AllowedHttpsEgressCidr1:
+    Type: String
+    Default: ""
+    Description: Optional HTTPS egress CIDR allowed from workload security group.
+
+  AllowedHttpsEgressCidr2:
+    Type: String
+    Default: ""
+    Description: Optional HTTPS egress CIDR allowed from workload security group.
+
+  AllowedHttpsEgressCidr3:
+    Type: String
+    Default: ""
+    Description: Optional HTTPS egress CIDR allowed from workload security group.
+
+  AllowedHttpsEgressPrefixListId1:
+    Type: String
+    Default: ""
+    Description: Optional managed prefix list ID allowed for HTTPS egress.
+
+Conditions:
+  UseNatPerAz: !Equals [!Ref NatGatewayMode, PerAz]
+  HasAllowedHttpsEgressCidr1: !Not [!Equals [!Ref AllowedHttpsEgressCidr1, ""]]
+  HasAllowedHttpsEgressCidr2: !Not [!Equals [!Ref AllowedHttpsEgressCidr2, ""]]
+  HasAllowedHttpsEgressCidr3: !Not [!Equals [!Ref AllowedHttpsEgressCidr3, ""]]
+  HasAllowedHttpsEgressPrefixListId1: !Not [!Equals [!Ref AllowedHttpsEgressPrefixListId1, ""]]
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${EnvironmentName}"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${EnvironmentName}-igw"
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref Vpc
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PublicSubnetACidr
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${EnvironmentName}-public-a"
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PublicSubnetBCidr
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${EnvironmentName}-public-b"
+
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PrivateSubnetACidr
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${EnvironmentName}-private-a"
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PrivateSubnetBCidr
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${EnvironmentName}-private-b"
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${EnvironmentName}-public-rt"
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetA
+
+  PublicSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetB
+
+  NatEipA:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${EnvironmentName}-nat-eip-a"
+
+  NatGatewayA:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEipA.AllocationId
+      SubnetId: !Ref PublicSubnetA
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${EnvironmentName}-nat-a"
+
+  NatEipB:
+    Type: AWS::EC2::EIP
+    Condition: UseNatPerAz
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${EnvironmentName}-nat-eip-b"
+
+  NatGatewayB:
+    Type: AWS::EC2::NatGateway
+    Condition: UseNatPerAz
+    Properties:
+      AllocationId: !GetAtt NatEipB.AllocationId
+      SubnetId: !Ref PublicSubnetB
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${EnvironmentName}-nat-b"
+
+  PrivateRouteTableA:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${EnvironmentName}-private-rt-a"
+
+  PrivateRouteTableB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${EnvironmentName}-private-rt-b"
+
+  PrivateDefaultRouteA:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableA
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayA
+
+  PrivateDefaultRouteB:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableB
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !If [UseNatPerAz, !Ref NatGatewayB, !Ref NatGatewayA]
+
+  PrivateSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableA
+      SubnetId: !Ref PrivateSubnetA
+
+  PrivateSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableB
+      SubnetId: !Ref PrivateSubnetB
+
+  WorkloadSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for private workloads with explicit egress only.
+      GroupName: !Sub "${ProjectName}-${EnvironmentName}-workload-sg"
+      VpcId: !Ref Vpc
+      SecurityGroupEgress: []
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${EnvironmentName}-workload-sg"
+
+  WorkloadHttpsEgressCidr1:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: HasAllowedHttpsEgressCidr1
+    Properties:
+      GroupId: !Ref WorkloadSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      CidrIp: !Ref AllowedHttpsEgressCidr1
+      Description: Allowed HTTPS egress CIDR 1.
+
+  WorkloadHttpsEgressCidr2:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: HasAllowedHttpsEgressCidr2
+    Properties:
+      GroupId: !Ref WorkloadSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      CidrIp: !Ref AllowedHttpsEgressCidr2
+      Description: Allowed HTTPS egress CIDR 2.
+
+  WorkloadHttpsEgressCidr3:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: HasAllowedHttpsEgressCidr3
+    Properties:
+      GroupId: !Ref WorkloadSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      CidrIp: !Ref AllowedHttpsEgressCidr3
+      Description: Allowed HTTPS egress CIDR 3.
+
+  WorkloadHttpsEgressPrefixList1:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: HasAllowedHttpsEgressPrefixListId1
+    Properties:
+      GroupId: !Ref WorkloadSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      DestinationPrefixListId: !Ref AllowedHttpsEgressPrefixListId1
+      Description: Allowed HTTPS egress managed prefix list 1.
+
+  EndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allows private workloads to reach interface VPC endpoints.
+      GroupName: !Sub "${ProjectName}-${EnvironmentName}-vpce-sg"
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref WorkloadSecurityGroup
+          Description: HTTPS from private workloads.
+      SecurityGroupEgress: []
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${EnvironmentName}-vpce-sg"
+
+  WorkloadEgressToEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref WorkloadSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      DestinationSecurityGroupId: !Ref EndpointSecurityGroup
+      Description: HTTPS to private interface VPC endpoints.
+
+  S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      RouteTableIds:
+        - !Ref PrivateRouteTableA
+        - !Ref PrivateRouteTableB
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      VpcEndpointType: Gateway
+      VpcId: !Ref Vpc
+
+  SecretsManagerEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+        - !Ref EndpointSecurityGroup
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.secretsmanager"
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+      VpcEndpointType: Interface
+      VpcId: !Ref Vpc
+
+  StsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+        - !Ref EndpointSecurityGroup
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.sts"
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+      VpcEndpointType: Interface
+      VpcId: !Ref Vpc
+
+Outputs:
+  VpcId:
+    Description: VPC ID.
+    Value: !Ref Vpc
+    Export:
+      Name: !Sub "${ProjectName}-${EnvironmentName}-vpc-id"
+
+  PrivateSubnetIds:
+    Description: Private subnet IDs for Lambda and private workloads.
+    Value: !Join [",", [!Ref PrivateSubnetA, !Ref PrivateSubnetB]]
+    Export:
+      Name: !Sub "${ProjectName}-${EnvironmentName}-private-subnet-ids"
+
+  PublicSubnetIds:
+    Description: Public subnet IDs for NAT gateways.
+    Value: !Join [",", [!Ref PublicSubnetA, !Ref PublicSubnetB]]
+    Export:
+      Name: !Sub "${ProjectName}-${EnvironmentName}-public-subnet-ids"
+
+  WorkloadSecurityGroupId:
+    Description: Security group ID for Lambda/private workloads.
+    Value: !Ref WorkloadSecurityGroup
+    Export:
+      Name: !Sub "${ProjectName}-${EnvironmentName}-workload-sg-id"
+
+  EndpointSecurityGroupId:
+    Description: Security group ID for interface VPC endpoints.
+    Value: !Ref EndpointSecurityGroup
+    Export:
+      Name: !Sub "${ProjectName}-${EnvironmentName}-vpce-sg-id"

@@ -1,0 +1,46 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "capital-alpha"
+  },
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "prod"
+  },
+  {
+    "ParameterKey": "ApiNameSuffix",
+    "ParameterValue": "data-layer-rest-api"
+  },
+  {
+    "ParameterKey": "FunctionNameSuffix",
+    "ParameterValue": "data-layer-rest"
+  },
+  {
+    "ParameterKey": "StageName",
+    "ParameterValue": "prod"
+  },
+  {
+    "ParameterKey": "OpenApiS3BucketName",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "OpenApiS3Key",
+    "ParameterValue": "openapi/data-layer-rest.openapi.json"
+  },
+  {
+    "ParameterKey": "OpenApiS3ObjectVersion",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "AccessLogRetentionDays",
+    "ParameterValue": "90"
+  },
+  {
+    "ParameterKey": "ThrottlingBurstLimit",
+    "ParameterValue": "100"
+  },
+  {
+    "ParameterKey": "ThrottlingRateLimit",
+    "ParameterValue": "50"
+  }
+]

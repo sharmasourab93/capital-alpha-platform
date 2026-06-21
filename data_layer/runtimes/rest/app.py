@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import FastAPI
-
 from data_layer.runtimes.rest.errors import register_exception_handlers
 from data_layer.runtimes.rest.middleware import register_request_logging
 from data_layer.runtimes.rest.routes import include_routers
+from fastapi import FastAPI
 
 
 def create_app() -> FastAPI:

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
-
 from data_layer.brokers import get_available_rest_brokers
 from data_layer.brokers.canonical.errors import BrokerValidationError
 from data_layer.brokers.canonical.models import (
@@ -23,6 +21,7 @@ from data_layer.runtimes.rest.schemas import (
     CandlePayload,
     QuotePayload,
 )
+from fastapi import APIRouter, Depends
 
 router = APIRouter(prefix="/market", tags=["market"])
 

@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
-
 from data_layer.brokers.canonical.models import AccountRequest
 from data_layer.brokers.canonical.service import BrokerRestService
 from data_layer.runtimes.rest.dependencies import get_broker_rest_service
 from data_layer.runtimes.rest.errors import call_or_raise
 from data_layer.runtimes.rest.responses import response_body
+from fastapi import APIRouter, Depends
 
 router = APIRouter(prefix="/account/{broker}", tags=["account"])
 WORK_IN_PROGRESS_STATUS = "work_in_progress"

@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
-
 from data_layer.brokers import get_available_rest_brokers
+from fastapi import APIRouter
 
 router = APIRouter(tags=["market"])
 

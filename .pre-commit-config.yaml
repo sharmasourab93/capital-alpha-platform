@@ -1,16 +1,20 @@
 repos:
   - repo: local
     hooks:
-      - id: isort-all
+      - id: isort-modified
         name: isort modified files
         entry: python -m isort
         language: system
+        pass_filenames: true
+        always_run: false
         types: [python]
         stages: [pre-commit]
 
-      - id: black-all
+      - id: black-modified
         name: black modified files
         entry: python -m black --line-length 79 --target-version py313
         language: system
+        pass_filenames: true
+        always_run: false
         types: [python]
         stages: [pre-commit]

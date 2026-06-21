@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
+from contextlib import contextmanager
+from pathlib import Path
 from typing import Any, Protocol
 
 from SmartApi import SmartConnect
@@ -138,7 +141,21 @@ class SmartConnectAdapter:
 
 def default_smart_api_client_factory(api_key: str) -> SmartApiClient:
     """Create the default SmartAPI SDK-backed client."""
-    return SmartConnectAdapter(SmartConnect(api_key=api_key))
+    with _smartapi_writable_working_directory():
+        return SmartConnectAdapter(SmartConnect(api_key=api_key))
+
+
+@contextmanager
+def _smartapi_writable_working_directory():
+    """Run SmartAPI setup from a writable directory for Lambda logs."""
+    original_cwd = Path.cwd()
+    writable_cwd = Path(os.getenv("SMARTAPI_WORKDIR", "/tmp"))
+    writable_cwd.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chdir(writable_cwd)
+        yield
+    finally:
+        os.chdir(original_cwd)
 
 
 class SmartApiTransport:

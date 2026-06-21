@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import uvicorn
-
 from data_layer.runtimes.rest.app import app
 from data_layer.runtimes.rest.config import RestRuntimeSettings
 from data_layer.runtimes.rest.log_config import configure_logging

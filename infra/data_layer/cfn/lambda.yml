@@ -1,0 +1,298 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Generic Lambda deployment for Capital Alpha zip artifacts.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: capital-alpha
+    AllowedValues:
+      - capital-alpha
+    Description: Project prefix used to name resources.
+
+  EnvironmentName:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - int
+      - prod
+    Description: Deployment environment.
+
+  FunctionNameSuffix:
+    Type: String
+    Default: data-layer-rest
+    AllowedPattern: "^[a-z0-9][a-z0-9-]{2,48}$"
+    Description: Function-specific name suffix.
+
+  FunctionDescription:
+    Type: String
+    Default: Capital Alpha data layer REST Lambda.
+    Description: Lambda function description.
+
+  Runtime:
+    Type: String
+    Default: python3.13
+    AllowedValues:
+      - python3.13
+    Description: Lambda runtime.
+
+  Handler:
+    Type: String
+    Default: data_layer.runtimes.rest.lambda_handler.handler
+    Description: Lambda handler.
+
+  CodeS3BucketName:
+    Type: String
+    Default: ""
+    Description: Optional S3 bucket name. If empty, imports the environment artifact bucket.
+
+  CodeS3Key:
+    Type: String
+    Description: S3 key for the Lambda deployment zip.
+
+  CodeS3ObjectVersion:
+    Type: String
+    Default: ""
+    Description: Optional S3 object version for deterministic deployments.
+
+  MemorySize:
+    Type: Number
+    Default: 256
+    MinValue: 128
+    MaxValue: 1024
+    Description: Lambda memory in MB.
+
+  TimeoutSeconds:
+    Type: Number
+    Default: 20
+    MinValue: 1
+    MaxValue: 60
+    Description: Lambda timeout in seconds.
+
+  ReservedConcurrentExecutions:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    MaxValue: 50
+    Description: Reserved concurrency limit. Use 0 to leave it unset.
+
+  LogRetentionDays:
+    Type: Number
+    Default: 14
+    AllowedValues:
+      - 1
+      - 3
+      - 5
+      - 7
+      - 14
+      - 30
+      - 60
+      - 90
+      - 120
+      - 150
+      - 180
+      - 365
+    Description: CloudWatch log retention in days.
+
+  LogLevel:
+    Type: String
+    Default: INFO
+    AllowedValues:
+      - DEBUG
+      - INFO
+      - WARNING
+      - ERROR
+    Description: Application log level.
+
+  PythonUnbuffered:
+    Type: String
+    Default: "1"
+    AllowedValues:
+      - "0"
+      - "1"
+    Description: Enables unbuffered Python stdout and stderr when set to 1.
+
+  AngelOneApiKey:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: AngelOne API key.
+
+  AngelOneApiSecret:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: AngelOne API secret.
+
+  AngelOneClientCode:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: AngelOne client code.
+
+  AngelOnePassword:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: AngelOne password.
+
+  AngelOneTotpSecret:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: AngelOne TOTP secret.
+
+  AttachToVpc:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Attach Lambda to private subnets from the environment network stack.
+
+  SecretsManagerSecretArn:
+    Type: String
+    Default: ""
+    Description: Optional secret ARN the Lambda may read.
+
+  ApiGatewaySourceArn:
+    Type: String
+    Default: ""
+    Description: Optional API Gateway execute-api source ARN allowed to invoke this Lambda.
+
+Conditions:
+  HasCodeS3BucketName: !Not [!Equals [!Ref CodeS3BucketName, ""]]
+  HasCodeS3ObjectVersion: !Not [!Equals [!Ref CodeS3ObjectVersion, ""]]
+  AttachLambdaToVpc: !Equals [!Ref AttachToVpc, "true"]
+  HasSecretsManagerSecretArn: !Not [!Equals [!Ref SecretsManagerSecretArn, ""]]
+  HasApiGatewaySourceArn: !Not [!Equals [!Ref ApiGatewaySourceArn, ""]]
+  HasReservedConcurrentExecutions: !Not [!Equals [!Ref ReservedConcurrentExecutions, 0]]
+
+Resources:
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ProjectName}-${EnvironmentName}-${FunctionNameSuffix}"
+      RetentionInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${EnvironmentName}-${FunctionNameSuffix}-logs"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-${EnvironmentName}-${FunctionNameSuffix}-lambda-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - !If
+          - HasSecretsManagerSecretArn
+          - PolicyName: !Sub "${ProjectName}-${EnvironmentName}-${FunctionNameSuffix}-secrets-read"
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - secretsmanager:GetSecretValue
+                  Resource: !Ref SecretsManagerSecretArn
+          - !Ref AWS::NoValue
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${EnvironmentName}-${FunctionNameSuffix}-lambda-role"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    DependsOn:
+      - LambdaLogGroup
+    Properties:
+      FunctionName: !Sub "${ProjectName}-${EnvironmentName}-${FunctionNameSuffix}"
+      Description: !Ref FunctionDescription
+      Runtime: !Ref Runtime
+      Handler: !Ref Handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !If
+          - HasCodeS3BucketName
+          - !Ref CodeS3BucketName
+          - Fn::ImportValue: !Sub "${ProjectName}-${EnvironmentName}-lambda-artifact-bucket-name"
+        S3Key: !Ref CodeS3Key
+        S3ObjectVersion: !If
+          - HasCodeS3ObjectVersion
+          - !Ref CodeS3ObjectVersion
+          - !Ref AWS::NoValue
+      MemorySize: !Ref MemorySize
+      Timeout: !Ref TimeoutSeconds
+      ReservedConcurrentExecutions: !If
+        - HasReservedConcurrentExecutions
+        - !Ref ReservedConcurrentExecutions
+        - !Ref AWS::NoValue
+      Environment:
+        Variables:
+          PROJECT_NAME: !Ref ProjectName
+          ENVIRONMENT_NAME: !Ref EnvironmentName
+          LOG_LEVEL: !Ref LogLevel
+          PYTHONUNBUFFERED: !Ref PythonUnbuffered
+          ANGELONE_API_KEY: !Ref AngelOneApiKey
+          ANGELONE_API_SECRET: !Ref AngelOneApiSecret
+          ANGELONE_CLIENTCODE: !Ref AngelOneClientCode
+          ANGELONE_PASSWORD: !Ref AngelOnePassword
+          ANGELONE_TOTP_SECRET: !Ref AngelOneTotpSecret
+      VpcConfig: !If
+        - AttachLambdaToVpc
+        - SecurityGroupIds:
+            - Fn::ImportValue: !Sub "${ProjectName}-${EnvironmentName}-workload-sg-id"
+          SubnetIds: !Split
+            - ","
+            - Fn::ImportValue: !Sub "${ProjectName}-${EnvironmentName}-private-subnet-ids"
+        - !Ref AWS::NoValue
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${EnvironmentName}-${FunctionNameSuffix}"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  ApiGatewayInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: HasApiGatewaySourceArn
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref LambdaFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Ref ApiGatewaySourceArn
+
+Outputs:
+  LambdaFunctionName:
+    Description: Lambda function name.
+    Value: !Ref LambdaFunction
+    Export:
+      Name: !Sub "${ProjectName}-${EnvironmentName}-${FunctionNameSuffix}-lambda-name"
+
+  LambdaFunctionArn:
+    Description: Lambda function ARN.
+    Value: !GetAtt LambdaFunction.Arn
+    Export:
+      Name: !Sub "${ProjectName}-${EnvironmentName}-${FunctionNameSuffix}-lambda-arn"
+
+  LambdaExecutionRoleArn:
+    Description: Lambda execution role ARN.
+    Value: !GetAtt LambdaExecutionRole.Arn
+    Export:
+      Name: !Sub "${ProjectName}-${EnvironmentName}-${FunctionNameSuffix}-lambda-role-arn"

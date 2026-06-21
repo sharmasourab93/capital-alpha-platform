@@ -17,4 +17,5 @@ dependencies = [
     "websocket-client>=1.9.0",
     "pandas==3.0.1",
     "pytest==9.0.3",
+    "mangum==0.21.0"
 ]

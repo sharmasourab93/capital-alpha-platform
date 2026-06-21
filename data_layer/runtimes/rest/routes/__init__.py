@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from data_layer.runtimes.rest.routes import (
+    account,
+    brokers,
+    funda,
+    health,
+    market,
+)
 from fastapi import FastAPI
-
-from data_layer.runtimes.rest.routes import account, brokers, funda, health
-from data_layer.runtimes.rest.routes import market
 
 
 def include_routers(app: FastAPI) -> None:

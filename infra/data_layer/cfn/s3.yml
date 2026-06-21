@@ -1,0 +1,100 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: S3 artifact bucket for Capital Alpha Lambda zip deployments.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: capital-alpha
+    AllowedValues:
+      - capital-alpha
+    Description: Project prefix used to name resources.
+
+  EnvironmentName:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - int
+      - prod
+    Description: Deployment environment.
+
+  BucketPurpose:
+    Type: String
+    Default: lambda-artifacts
+    AllowedPattern: "^[a-z0-9][a-z0-9-]{2,40}$"
+    Description: Short bucket purpose suffix.
+
+  NoncurrentVersionExpirationDays:
+    Type: Number
+    Default: 30
+    MinValue: 1
+    MaxValue: 365
+    Description: Days to retain old object versions.
+
+Resources:
+  LambdaArtifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "${ProjectName}-${EnvironmentName}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldArtifactVersions
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: !Ref NoncurrentVersionExpirationDays
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${EnvironmentName}-${BucketPurpose}"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Purpose
+          Value: !Ref BucketPurpose
+      VersioningConfiguration:
+        Status: Enabled
+
+  LambdaArtifactBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref LambdaArtifactBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt LambdaArtifactBucket.Arn
+              - !Sub "${LambdaArtifactBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+Outputs:
+  LambdaArtifactBucketName:
+    Description: S3 bucket used for Lambda deployment artifacts.
+    Value: !Ref LambdaArtifactBucket
+    Export:
+      Name: !Sub "${ProjectName}-${EnvironmentName}-lambda-artifact-bucket-name"
+
+  LambdaArtifactBucketArn:
+    Description: ARN of the Lambda artifact bucket.
+    Value: !GetAtt LambdaArtifactBucket.Arn
+    Export:
+      Name: !Sub "${ProjectName}-${EnvironmentName}-lambda-artifact-bucket-arn"

@@ -1,0 +1,189 @@
+name: Deploy Data Layer API Gateway
+
+on:
+  workflow_dispatch:
+    inputs:
+      aws_region:
+        description: AWS region.
+        required: true
+        default: ap-south-2
+      function_suffix:
+        description: Lambda function suffix exported by the Lambda stack.
+        required: true
+        default: data-layer-rest
+      openapi_key:
+        description: S3 key for the rendered OpenAPI JSON.
+        required: true
+        default: openapi/data-layer-rest.openapi.json
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy API Gateway stack
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'prod' || github.ref_name == 'qa' && 'int' || 'dev' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Resolve deployment environment
+        id: deployment_env
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "${GITHUB_REF_NAME}" in
+            main) ENV_NAME="prod" ;;
+            qa) ENV_NAME="int" ;;
+            *) ENV_NAME="dev" ;;
+          esac
+
+          echo "env_name=${ENV_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve artifact bucket and Lambda ARN
+        id: stack_outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ENV_NAME="${{ steps.deployment_env.outputs.env_name }}"
+          FUNCTION_SUFFIX="${{ inputs.function_suffix }}"
+
+          BUCKET_NAME="$(aws cloudformation describe-stacks \
+            --stack-name "capital-alpha-${ENV_NAME}-artifacts" \
+            --query "Stacks[0].Outputs[?OutputKey=='LambdaArtifactBucketName'].OutputValue" \
+            --output text)"
+
+          LAMBDA_ARN="$(aws cloudformation describe-stacks \
+            --stack-name "capital-alpha-${ENV_NAME}-${FUNCTION_SUFFIX}-lambda" \
+            --query "Stacks[0].Outputs[?OutputKey=='LambdaFunctionArn'].OutputValue" \
+            --output text)"
+
+          echo "bucket_name=${BUCKET_NAME}" >> "$GITHUB_OUTPUT"
+          echo "lambda_arn=${LAMBDA_ARN}" >> "$GITHUB_OUTPUT"
+
+      - name: Render OpenAPI document
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SOURCE_OPENAPI="data_layer/openapi/data-layer-rest.openapi.json"
+          RENDERED_OPENAPI="data-layer-rest.openapi.rendered.json"
+          REGION="${{ inputs.aws_region }}"
+          LAMBDA_ARN="${{ steps.stack_outputs.outputs.lambda_arn }}"
+          INVOKE_URI="arn:aws:apigateway:${REGION}:lambda:path/2015-03-31/functions/${LAMBDA_ARN}/invocations"
+
+          jq --arg invoke_uri "$INVOKE_URI" \
+            'walk(if type == "string" then gsub("__LAMBDA_INVOKE_URI__"; $invoke_uri) else . end)' \
+            "$SOURCE_OPENAPI" > "$RENDERED_OPENAPI"
+
+      - name: Validate rendered OpenAPI document
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SOURCE_OPENAPI="data_layer/openapi/data-layer-rest.openapi.json"
+          RENDERED_OPENAPI="data-layer-rest.openapi.rendered.json"
+          LAMBDA_ARN="${{ steps.stack_outputs.outputs.lambda_arn }}"
+
+          if ! grep -q "__LAMBDA_INVOKE_URI__" "$SOURCE_OPENAPI"; then
+            echo "::error::Source OpenAPI does not contain __LAMBDA_INVOKE_URI__ placeholder."
+            exit 1
+          fi
+
+          if grep -q "__LAMBDA_INVOKE_URI__" "$RENDERED_OPENAPI"; then
+            echo "::error::Rendered OpenAPI still contains __LAMBDA_INVOKE_URI__ placeholder."
+            exit 1
+          fi
+
+          if ! grep -q "$LAMBDA_ARN" "$RENDERED_OPENAPI"; then
+            echo "::error::Rendered OpenAPI does not contain the resolved Lambda ARN."
+            exit 1
+          fi
+
+          jq empty "$RENDERED_OPENAPI"
+
+      - name: Check rendered OpenAPI diff
+        id: openapi_diff
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ENV_NAME="${{ steps.deployment_env.outputs.env_name }}"
+          STACK_NAME="capital-alpha-${ENV_NAME}-data-layer-rest-api"
+          BUCKET_NAME="${{ steps.stack_outputs.outputs.bucket_name }}"
+          OPENAPI_KEY="${{ inputs.openapi_key }}"
+          RENDERED_OPENAPI="data-layer-rest.openapi.rendered.json"
+          CURRENT_OPENAPI="data-layer-rest.openapi.current.json"
+
+          STACK_STATUS="$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query 'Stacks[0].StackStatus' \
+            --output text 2>/dev/null || true)"
+
+          if [[ -z "$STACK_STATUS" ]]; then
+            echo "API Gateway stack does not exist yet; deployment is required."
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! aws s3 cp "s3://${BUCKET_NAME}/${OPENAPI_KEY}" "$CURRENT_OPENAPI"; then
+            echo "Rendered OpenAPI object does not exist in S3; deployment is required."
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if cmp -s "$RENDERED_OPENAPI" "$CURRENT_OPENAPI"; then
+            echo "Rendered OpenAPI document is unchanged; skipping upload and stack deployment."
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Rendered OpenAPI document changed; deployment is required."
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload rendered OpenAPI document
+        if: steps.openapi_diff.outputs.should_deploy == 'true'
+        run: |
+          aws s3 cp data-layer-rest.openapi.rendered.json \
+            "s3://${{ steps.stack_outputs.outputs.bucket_name }}/${{ inputs.openapi_key }}"
+
+      - name: Validate template
+        if: steps.openapi_diff.outputs.should_deploy == 'true'
+        run: |
+          aws cloudformation validate-template \
+            --template-body file://infra/data_layer/cfn/apigateway.yml
+
+      - name: Deploy stack
+        if: steps.openapi_diff.outputs.should_deploy == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ENV_NAME="${{ steps.deployment_env.outputs.env_name }}"
+          PARAM_FILE="infra/data_layer/params/apigateway/apigateway-${ENV_NAME}.json"
+          STACK_NAME="capital-alpha-${ENV_NAME}-data-layer-rest-api"
+          mapfile -t PARAM_OVERRIDES < <(jq -r '.[] | "\(.ParameterKey)=\(.ParameterValue)"' "$PARAM_FILE")
+
+          PARAM_OVERRIDES+=(
+            "OpenApiS3Key=${{ inputs.openapi_key }}"
+          )
+
+          aws cloudformation deploy \
+            --stack-name "$STACK_NAME" \
+            --template-file infra/data_layer/cfn/apigateway.yml \
+            --parameter-overrides "${PARAM_OVERRIDES[@]}"
+
+      - name: Skip deployment
+        if: steps.openapi_diff.outputs.should_deploy == 'false'
+        run: |
+          echo "No rendered OpenAPI changes detected. API Gateway deployment skipped."
