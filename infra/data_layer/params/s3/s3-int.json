@@ -1,0 +1,18 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "capital-alpha"
+  },
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "int"
+  },
+  {
+    "ParameterKey": "BucketPurpose",
+    "ParameterValue": "lambda-artifacts"
+  },
+  {
+    "ParameterKey": "NoncurrentVersionExpirationDays",
+    "ParameterValue": "60"
+  }
+]

@@ -1,0 +1,18 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "capital-alpha"
+  },
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "dev"
+  },
+  {
+    "ParameterKey": "BucketPurpose",
+    "ParameterValue": "config-artifact"
+  },
+  {
+    "ParameterKey": "NoncurrentVersionExpirationDays",
+    "ParameterValue": "30"
+  }
+]
