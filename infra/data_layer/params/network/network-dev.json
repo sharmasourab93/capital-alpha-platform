@@ -33,7 +33,7 @@
   },
   {
     "ParameterKey": "AllowedHttpsEgressCidr1",
-    "ParameterValue": ""
+    "ParameterValue": "0.0.0.0/0"
   },
   {
     "ParameterKey": "AllowedHttpsEgressCidr2",
