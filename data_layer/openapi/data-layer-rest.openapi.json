@@ -1,0 +1,211 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Capital Alpha Data Layer API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "description": "Runtime health"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "type": "aws_proxy",
+          "httpMethod": "POST",
+          "uri": "__LAMBDA_INVOKE_URI__",
+          "payloadFormatVersion": "2.0"
+        }
+      }
+    },
+    "/brokers": {
+      "get": {
+        "operationId": "listBrokersCompat",
+        "responses": {
+          "200": {
+            "description": "Registered brokers"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "type": "aws_proxy",
+          "httpMethod": "POST",
+          "uri": "__LAMBDA_INVOKE_URI__",
+          "payloadFormatVersion": "2.0"
+        }
+      }
+    },
+    "/market/brokers": {
+      "get": {
+        "operationId": "listMarketBrokers",
+        "responses": {
+          "200": {
+            "description": "Registered market brokers"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "type": "aws_proxy",
+          "httpMethod": "POST",
+          "uri": "__LAMBDA_INVOKE_URI__",
+          "payloadFormatVersion": "2.0"
+        }
+      }
+    },
+    "/market/{broker}/{exchange}/intervals": {
+      "get": {
+        "operationId": "getIntervals",
+        "parameters": [
+          { "name": "broker", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "exchange", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Supported intervals"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "type": "aws_proxy",
+          "httpMethod": "POST",
+          "uri": "__LAMBDA_INVOKE_URI__",
+          "payloadFormatVersion": "2.0"
+        }
+      }
+    },
+    "/market/{broker}/{exchange}/scrips": {
+      "get": {
+        "operationId": "getAllScrips",
+        "parameters": [
+          { "name": "broker", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "exchange", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Broker scrip list"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "type": "aws_proxy",
+          "httpMethod": "POST",
+          "uri": "__LAMBDA_INVOKE_URI__",
+          "payloadFormatVersion": "2.0"
+        }
+      }
+    },
+    "/market/{broker}/{exchange}/ltp": {
+      "get": {
+        "operationId": "getLtp",
+        "parameters": [
+          { "name": "broker", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "exchange", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "symbol", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Last traded price"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "type": "aws_proxy",
+          "httpMethod": "POST",
+          "uri": "__LAMBDA_INVOKE_URI__",
+          "payloadFormatVersion": "2.0"
+        }
+      }
+    },
+    "/market/{broker}/{exchange}/quotes": {
+      "post": {
+        "operationId": "getQuotes",
+        "parameters": [
+          { "name": "broker", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "exchange", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/QuotePayload" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Quote data"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "type": "aws_proxy",
+          "httpMethod": "POST",
+          "uri": "__LAMBDA_INVOKE_URI__",
+          "payloadFormatVersion": "2.0"
+        }
+      }
+    },
+    "/market/{broker}/{exchange}/candles": {
+      "post": {
+        "operationId": "getCandles",
+        "parameters": [
+          { "name": "broker", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "exchange", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CandlePayload" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Candle data"
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "type": "aws_proxy",
+          "httpMethod": "POST",
+          "uri": "__LAMBDA_INVOKE_URI__",
+          "payloadFormatVersion": "2.0"
+        }
+      }
+    },
+    "/account/{broker}/profile": { "get": { "operationId": "getProfile", "parameters": [{ "name": "broker", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Account profile" } }, "x-amazon-apigateway-integration": { "type": "aws_proxy", "httpMethod": "POST", "uri": "__LAMBDA_INVOKE_URI__", "payloadFormatVersion": "2.0" } } },
+    "/account/{broker}/funds": { "get": { "operationId": "getFunds", "parameters": [{ "name": "broker", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Account funds" } }, "x-amazon-apigateway-integration": { "type": "aws_proxy", "httpMethod": "POST", "uri": "__LAMBDA_INVOKE_URI__", "payloadFormatVersion": "2.0" } } },
+    "/account/{broker}/holdings": { "get": { "operationId": "getHoldings", "parameters": [{ "name": "broker", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Account holdings" } }, "x-amazon-apigateway-integration": { "type": "aws_proxy", "httpMethod": "POST", "uri": "__LAMBDA_INVOKE_URI__", "payloadFormatVersion": "2.0" } } },
+    "/account/{broker}/positions": { "get": { "operationId": "getPositions", "parameters": [{ "name": "broker", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Account positions" } }, "x-amazon-apigateway-integration": { "type": "aws_proxy", "httpMethod": "POST", "uri": "__LAMBDA_INVOKE_URI__", "payloadFormatVersion": "2.0" } } },
+    "/account/{broker}/orders": { "get": { "operationId": "getOrders", "parameters": [{ "name": "broker", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Order book" } }, "x-amazon-apigateway-integration": { "type": "aws_proxy", "httpMethod": "POST", "uri": "__LAMBDA_INVOKE_URI__", "payloadFormatVersion": "2.0" } } },
+    "/account/{broker}/trades": { "get": { "operationId": "getTrades", "parameters": [{ "name": "broker", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Trade book" } }, "x-amazon-apigateway-integration": { "type": "aws_proxy", "httpMethod": "POST", "uri": "__LAMBDA_INVOKE_URI__", "payloadFormatVersion": "2.0" } } },
+    "/funda/{market}": { "get": { "operationId": "fundamentalsNamespace", "parameters": [{ "name": "market", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Reserved fundamentals namespace" } }, "x-amazon-apigateway-integration": { "type": "aws_proxy", "httpMethod": "POST", "uri": "__LAMBDA_INVOKE_URI__", "payloadFormatVersion": "2.0" } } }
+  },
+  "components": {
+    "schemas": {
+      "QuotePayload": {
+        "type": "object",
+        "required": ["symbols"],
+        "properties": {
+          "symbols": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1,
+            "maxItems": 50
+          },
+          "mode": {
+            "type": "string",
+            "default": "FULL"
+          }
+        }
+      },
+      "CandlePayload": {
+        "type": "object",
+        "required": ["symbol", "interval", "from_time", "to_time"],
+        "properties": {
+          "symbol": { "type": "string" },
+          "interval": { "type": "string" },
+          "from_time": { "type": "string" },
+          "to_time": { "type": "string" }
+        }
+      }
+    }
+  }
+}
