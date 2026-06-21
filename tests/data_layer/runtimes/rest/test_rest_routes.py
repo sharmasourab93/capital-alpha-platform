@@ -42,7 +42,7 @@ from data_layer.runtimes.rest.schemas import (
 )
 
 
-@pytest.skip
+@pytest.mark.skip
 def test_app_registers_expected_routes() -> None:
     """Verify the app includes the agreed REST routes."""
     app = create_app()
