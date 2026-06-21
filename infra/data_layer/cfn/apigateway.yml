@@ -107,7 +107,6 @@ Resources:
   HttpApi:
     Type: AWS::ApiGatewayV2::Api
     Properties:
-      Name: !Sub "${ProjectName}-${EnvironmentName}-${ApiNameSuffix}"
       BodyS3Location:
         Bucket: !If
           - HasOpenApiS3BucketName
@@ -119,10 +118,6 @@ Resources:
           - !Ref OpenApiS3ObjectVersion
           - !Ref AWS::NoValue
       FailOnWarnings: true
-      Tags:
-        Name: !Sub "${ProjectName}-${EnvironmentName}-${ApiNameSuffix}"
-        Project: !Ref ProjectName
-        Environment: !Ref EnvironmentName
 
   ApiStage:
     Type: AWS::ApiGatewayV2::Stage
