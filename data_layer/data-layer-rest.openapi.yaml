@@ -75,7 +75,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/IntervalsResponse"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          $ref: "#/components/responses/ValidationFailed"
         "500":
           $ref: "#/components/responses/InternalServerError"
       x-amazon-apigateway-integration:
@@ -98,11 +98,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BrokerResponse"
+                $ref: "#/components/schemas/ScripListBrokerResponse"
         "404":
           $ref: "#/components/responses/BrokerNotFound"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          $ref: "#/components/responses/ValidationFailed"
         "502":
           $ref: "#/components/responses/BrokerOperationError"
         "503":
@@ -135,11 +135,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BrokerResponse"
+                $ref: "#/components/schemas/MarketDataBrokerResponse"
         "404":
           $ref: "#/components/responses/BrokerNotFound"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          $ref: "#/components/responses/ValidationFailed"
         "502":
           $ref: "#/components/responses/BrokerOperationError"
         "503":
@@ -172,11 +172,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BrokerResponse"
+                $ref: "#/components/schemas/MarketDataBrokerResponse"
         "404":
           $ref: "#/components/responses/BrokerNotFound"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          $ref: "#/components/responses/ValidationFailed"
         "502":
           $ref: "#/components/responses/BrokerOperationError"
         "503":
@@ -209,11 +209,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BrokerResponse"
+                $ref: "#/components/schemas/CandleBrokerResponse"
         "404":
           $ref: "#/components/responses/BrokerNotFound"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          $ref: "#/components/responses/ValidationFailed"
         "502":
           $ref: "#/components/responses/BrokerOperationError"
         "503":
@@ -239,7 +239,7 @@ paths:
         "404":
           $ref: "#/components/responses/BrokerNotFound"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          $ref: "#/components/responses/ValidationFailed"
         "502":
           $ref: "#/components/responses/BrokerOperationError"
         "503":
@@ -265,7 +265,7 @@ paths:
         "404":
           $ref: "#/components/responses/BrokerNotFound"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          $ref: "#/components/responses/ValidationFailed"
         "502":
           $ref: "#/components/responses/BrokerOperationError"
         "503":
@@ -291,7 +291,7 @@ paths:
         "404":
           $ref: "#/components/responses/BrokerNotFound"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          $ref: "#/components/responses/ValidationFailed"
         "502":
           $ref: "#/components/responses/BrokerOperationError"
         "503":
@@ -317,7 +317,7 @@ paths:
         "404":
           $ref: "#/components/responses/BrokerNotFound"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          $ref: "#/components/responses/ValidationFailed"
         "502":
           $ref: "#/components/responses/BrokerOperationError"
         "503":
@@ -343,7 +343,7 @@ paths:
         "404":
           $ref: "#/components/responses/BrokerNotFound"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          $ref: "#/components/responses/ValidationFailed"
         "502":
           $ref: "#/components/responses/BrokerOperationError"
         "503":
@@ -369,7 +369,7 @@ paths:
         "404":
           $ref: "#/components/responses/BrokerNotFound"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          $ref: "#/components/responses/ValidationFailed"
         "502":
           $ref: "#/components/responses/BrokerOperationError"
         "503":
@@ -401,7 +401,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/FundamentalsNamespaceResponse"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          $ref: "#/components/responses/ValidationFailed"
         "500":
           $ref: "#/components/responses/InternalServerError"
       x-amazon-apigateway-integration:
@@ -444,12 +444,34 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
-    ValidationError:
-      description: Request validation failed.
+    ValidationFailed:
+      description: Request or canonical validation failed.
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/ErrorResponse"
+            oneOf:
+              - $ref: "#/components/schemas/ErrorResponse"
+              - $ref: "#/components/schemas/HTTPValidationError"
+          examples:
+            fastapiValidation:
+              summary: FastAPI request validation error.
+              value:
+                detail:
+                  - loc:
+                      - body
+                      - mode
+                    msg: Input should be 'LTP', 'OHLC' or 'FULL'
+                    type: literal_error
+            canonicalValidation:
+              summary: Canonical broker validation error.
+              value:
+                detail:
+                  code: BROKER_VALIDATION_ERROR
+                  message: Too many symbols requested
+                  details:
+                    field: symbol
+                    max_symbols: 50
+                    actual_symbols: 51
     BrokerOperationError:
       description: Broker operation failed.
       content:
@@ -518,13 +540,12 @@ components:
           items:
             $ref: "#/components/schemas/Interval"
 
-    BrokerResponse:
+    BrokerResponseBase:
       type: object
       required:
         - broker
         - operation
         - success
-        - data
       properties:
         broker:
           type: string
@@ -532,8 +553,6 @@ components:
           type: string
         success:
           type: boolean
-        data:
-          description: Canonical broker operation payload.
         message:
           type: string
           nullable: true
@@ -541,13 +560,74 @@ components:
           type: string
           nullable: true
 
-    AccountBrokerResponse:
+    BrokerResponse:
       allOf:
-        - $ref: "#/components/schemas/BrokerResponse"
+        - $ref: "#/components/schemas/BrokerResponseBase"
         - type: object
           required:
+            - data
+          properties:
+            data:
+              description: Canonical broker operation payload.
+
+    MarketDataBrokerResponse:
+      allOf:
+        - $ref: "#/components/schemas/BrokerResponseBase"
+        - type: object
+          required:
+            - data
+          properties:
+            data:
+              type: object
+              additionalProperties: true
+              nullable: true
+              description: Canonical market data payload.
+
+    ScripListBrokerResponse:
+      allOf:
+        - $ref: "#/components/schemas/BrokerResponseBase"
+        - type: object
+          required:
+            - data
+          properties:
+            data:
+              type: array
+              items:
+                oneOf:
+                  - type: string
+                  - type: object
+                    additionalProperties: true
+              description: Canonical instrument list payload.
+
+    CandleBrokerResponse:
+      allOf:
+        - $ref: "#/components/schemas/BrokerResponseBase"
+        - type: object
+          required:
+            - data
+          properties:
+            data:
+              type: array
+              items:
+                type: array
+                items:
+                  oneOf:
+                    - type: string
+                    - type: number
+                    - type: integer
+                    - type: boolean
+              description: Canonical candle-series payload.
+
+    AccountBrokerResponse:
+      allOf:
+        - $ref: "#/components/schemas/BrokerResponseBase"
+        - type: object
+          required:
+            - data
             - status
           properties:
+            data:
+              description: Canonical account operation payload.
             status:
               type: string
               example: work_in_progress
@@ -578,6 +658,7 @@ components:
           maxItems: 50
           items:
             type: string
+            minLength: 1
         mode:
           type: string
           enum:
@@ -596,12 +677,49 @@ components:
       properties:
         symbol:
           type: string
+          minLength: 1
         interval:
           type: string
+          minLength: 1
         from_time:
           type: string
+          minLength: 1
         to_time:
           type: string
+          minLength: 1
+
+    HTTPValidationError:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: array
+          items:
+            $ref: "#/components/schemas/RequestValidationError"
+
+    RequestValidationError:
+      type: object
+      required:
+        - loc
+        - msg
+        - type
+      properties:
+        loc:
+          type: array
+          items:
+            oneOf:
+              - type: string
+              - type: integer
+        msg:
+          type: string
+        type:
+          type: string
+        input:
+          nullable: true
+        ctx:
+          type: object
+          additionalProperties: true
 
     ErrorResponse:
       type: object

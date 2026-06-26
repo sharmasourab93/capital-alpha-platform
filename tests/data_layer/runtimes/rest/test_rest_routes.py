@@ -1,5 +1,8 @@
 """Tests for REST runtime route modules."""
 
+import asyncio
+import json
+
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -16,6 +19,7 @@ from data_layer.brokers.canonical.models import (
     ScripListResponse,
 )
 from data_layer.runtimes.rest.app import create_app
+from data_layer.runtimes.rest.dependencies import get_broker_rest_service
 from data_layer.runtimes.rest.routes.account import (
     get_funds,
     get_holdings,
@@ -159,6 +163,62 @@ def test_quote_payload_rejects_more_than_max_symbols() -> None:
         QuotePayload(symbols=symbols)
 
 
+def test_quote_payload_normalizes_symbols_and_mode() -> None:
+    """Verify quote payloads are normalized before canonical requests."""
+    payload = QuotePayload(symbols=[" SBIN ", " RELIANCE "], mode="full")
+
+    assert payload.symbols == ["SBIN", "RELIANCE"]
+    assert payload.mode == "FULL"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"symbols": [" "]},
+        {"symbols": ["SBIN"], "mode": "bad_mode"},
+    ],
+)
+def test_quote_payload_rejects_invalid_values(payload: dict) -> None:
+    """Verify quote payloads reject blank symbols and unsupported modes."""
+    with pytest.raises(ValidationError):
+        QuotePayload(**payload)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "symbol": " ",
+            "interval": "ONE_MINUTE",
+            "from_time": "2026-05-22 09:15",
+            "to_time": "2026-05-22 09:20",
+        },
+        {
+            "symbol": "SBIN",
+            "interval": " ",
+            "from_time": "2026-05-22 09:15",
+            "to_time": "2026-05-22 09:20",
+        },
+        {
+            "symbol": "SBIN",
+            "interval": "ONE_MINUTE",
+            "from_time": " ",
+            "to_time": "2026-05-22 09:20",
+        },
+        {
+            "symbol": "SBIN",
+            "interval": "ONE_MINUTE",
+            "from_time": "2026-05-22 09:15",
+            "to_time": " ",
+        },
+    ],
+)
+def test_candle_payload_rejects_blank_values(payload: dict) -> None:
+    """Verify candle payloads reject blank required fields."""
+    with pytest.raises(ValidationError):
+        CandlePayload(**payload)
+
+
 def test_quote_and_candle_routes_build_canonical_requests() -> None:
     """Verify quote and candle routes pass path exchange."""
     service = _Service()
@@ -195,6 +255,48 @@ def test_quote_and_candle_routes_build_canonical_requests() -> None:
             "2026-05-22 09:20",
         ),
     ]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"symbols": ["SBIN"], "mode": "bad_mode"},
+        {"symbols": [" "]},
+    ],
+)
+def test_invalid_quote_http_requests_return_422_before_service_call(
+    payload: dict,
+) -> None:
+    """Verify FastAPI rejects invalid quote payloads before broker calls."""
+    service = _Service()
+    status_code, response_body = _post_json_with_service(
+        service,
+        "/market/angelone/nse/quotes",
+        payload,
+    )
+
+    assert status_code == 422
+    assert isinstance(response_body["detail"], list)
+    assert service.calls == []
+
+
+def test_invalid_candle_http_request_returns_422_before_service_call() -> None:
+    """Verify FastAPI rejects invalid candle payloads before broker calls."""
+    service = _Service()
+    status_code, response_body = _post_json_with_service(
+        service,
+        "/market/angelone/nse/candles",
+        {
+            "symbol": "SBIN",
+            "interval": " ",
+            "from_time": "2026-05-22 09:15",
+            "to_time": "2026-05-22 09:20",
+        },
+    )
+
+    assert status_code == 422
+    assert isinstance(response_body["detail"], list)
+    assert service.calls == []
 
 
 def test_account_routes_build_canonical_requests() -> None:
@@ -400,3 +502,62 @@ def _account_response(broker: str, operation: str, data) -> AccountResponse:
         success=True,
         data=data,
     )
+
+
+def _post_json_with_service(
+    service: _Service,
+    path: str,
+    payload: dict,
+) -> tuple[int, dict]:
+    """Post JSON to the ASGI app with a fake broker service."""
+    app = create_app()
+    app.dependency_overrides[get_broker_rest_service] = lambda: service
+
+    return asyncio.run(_post_json(app, path, payload))
+
+
+async def _post_json(app, path: str, payload: dict) -> tuple[int, dict]:
+    """Send a minimal ASGI POST request and return status/body."""
+    request_body = json.dumps(payload).encode()
+    messages = [
+        {
+            "type": "http.request",
+            "body": request_body,
+            "more_body": False,
+        }
+    ]
+    response = {"status": 0, "body": b""}
+
+    async def receive() -> dict:
+        if messages:
+            return messages.pop(0)
+        return {"type": "http.disconnect"}
+
+    async def send(message: dict) -> None:
+        if message["type"] == "http.response.start":
+            response["status"] = message["status"]
+        elif message["type"] == "http.response.body":
+            response["body"] += message.get("body", b"")
+
+    await app(
+        {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "http",
+            "path": path,
+            "raw_path": path.encode(),
+            "query_string": b"",
+            "headers": [
+                (b"host", b"testserver"),
+                (b"content-type", b"application/json"),
+            ],
+            "server": ("testserver", 80),
+            "client": ("testclient", 123),
+        },
+        receive,
+        send,
+    )
+
+    return response["status"], json.loads(response["body"])
