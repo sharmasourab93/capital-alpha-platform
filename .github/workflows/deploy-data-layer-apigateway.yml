@@ -12,9 +12,9 @@ on:
         required: true
         default: data-layer-rest
       openapi_key:
-        description: S3 key for the rendered OpenAPI JSON.
+        description: S3 key for the rendered OpenAPI YAML.
         required: true
-        default: openapi/data-layer-rest.openapi.json
+        default: openapi/data-layer-rest.openapi.yaml
 
 permissions:
   contents: read
@@ -77,23 +77,21 @@ jobs:
         run: |
           set -euo pipefail
 
-          SOURCE_OPENAPI="data_layer/openapi/data-layer-rest.openapi.json"
-          RENDERED_OPENAPI="data-layer-rest.openapi.rendered.json"
+          SOURCE_OPENAPI="data_layer/data-layer-rest.openapi.yaml"
+          RENDERED_OPENAPI="data-layer-rest.openapi.rendered.yaml"
           REGION="${{ inputs.aws_region }}"
           LAMBDA_ARN="${{ steps.stack_outputs.outputs.lambda_arn }}"
           INVOKE_URI="arn:aws:apigateway:${REGION}:lambda:path/2015-03-31/functions/${LAMBDA_ARN}/invocations"
 
-          jq --arg invoke_uri "$INVOKE_URI" \
-            'walk(if type == "string" then gsub("__LAMBDA_INVOKE_URI__"; $invoke_uri) else . end)' \
-            "$SOURCE_OPENAPI" > "$RENDERED_OPENAPI"
+          sed "s#__LAMBDA_INVOKE_URI__#${INVOKE_URI}#g" "$SOURCE_OPENAPI" > "$RENDERED_OPENAPI"
 
       - name: Validate rendered OpenAPI document
         shell: bash
         run: |
           set -euo pipefail
 
-          SOURCE_OPENAPI="data_layer/openapi/data-layer-rest.openapi.json"
-          RENDERED_OPENAPI="data-layer-rest.openapi.rendered.json"
+          SOURCE_OPENAPI="data_layer/data-layer-rest.openapi.yaml"
+          RENDERED_OPENAPI="data-layer-rest.openapi.rendered.yaml"
           LAMBDA_ARN="${{ steps.stack_outputs.outputs.lambda_arn }}"
 
           if ! grep -q "__LAMBDA_INVOKE_URI__" "$SOURCE_OPENAPI"; then
@@ -111,7 +109,7 @@ jobs:
             exit 1
           fi
 
-          jq empty "$RENDERED_OPENAPI"
+          test -s "$RENDERED_OPENAPI"
 
       - name: Check rendered OpenAPI diff
         id: openapi_diff
@@ -123,8 +121,8 @@ jobs:
           STACK_NAME="capital-alpha-${ENV_NAME}-data-layer-rest-api"
           BUCKET_NAME="${{ steps.stack_outputs.outputs.bucket_name }}"
           OPENAPI_KEY="${{ inputs.openapi_key }}"
-          RENDERED_OPENAPI="data-layer-rest.openapi.rendered.json"
-          CURRENT_OPENAPI="data-layer-rest.openapi.current.json"
+          RENDERED_OPENAPI="data-layer-rest.openapi.rendered.yaml"
+          CURRENT_OPENAPI="data-layer-rest.openapi.current.yaml"
 
           STACK_STATUS="$(aws cloudformation describe-stacks \
             --stack-name "$STACK_NAME" \
@@ -154,7 +152,7 @@ jobs:
       - name: Upload rendered OpenAPI document
         if: steps.openapi_diff.outputs.should_deploy == 'true'
         run: |
-          aws s3 cp data-layer-rest.openapi.rendered.json \
+          aws s3 cp data-layer-rest.openapi.rendered.yaml \
             "s3://${{ steps.stack_outputs.outputs.bucket_name }}/${{ inputs.openapi_key }}"
 
       - name: Validate template

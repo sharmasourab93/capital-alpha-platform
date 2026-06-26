@@ -42,12 +42,12 @@ Parameters:
   OpenApiS3BucketName:
     Type: String
     Default: ""
-    Description: Optional bucket containing rendered OpenAPI JSON. If empty, imports the artifact bucket.
+    Description: Optional bucket containing rendered OpenAPI YAML. If empty, imports the artifact bucket.
 
   OpenApiS3Key:
     Type: String
-    Default: openapi/data-layer-rest.openapi.json
-    Description: S3 key for the rendered OpenAPI JSON document.
+    Default: openapi/data-layer-rest.openapi.yaml
+    Description: S3 key for the rendered OpenAPI YAML document.
 
   OpenApiS3ObjectVersion:
     Type: String
