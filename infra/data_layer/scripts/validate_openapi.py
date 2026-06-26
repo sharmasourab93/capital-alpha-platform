@@ -15,6 +15,14 @@ EXPECTED_INTEGRATION_METHOD = "POST"
 EXPECTED_PAYLOAD_FORMAT_VERSION = "2.0"
 EXPECTED_SECURITY_SCHEME = "sigv4"
 PUBLIC_OPERATIONS = {("GET", "/health")}
+REQUIRED_CORS_METHODS = {"GET", "POST", "OPTIONS"}
+REQUIRED_CORS_HEADERS = {
+    "Authorization",
+    "Content-Type",
+    "X-Amz-Content-Sha256",
+    "X-Amz-Date",
+    "X-Amz-Security-Token",
+}
 LAMBDA_INVOKE_URI_PREFIX = "arn:aws:apigateway:"
 LAMBDA_INVOKE_URI_SUFFIX = "/invocations"
 LAMBDA_PLACEHOLDER = "__LAMBDA_INVOKE_URI__"
@@ -58,6 +66,7 @@ def validate_openapi(openapi_path: Path) -> list[str]:
     _validate_top_level(document, errors)
     _validate_no_placeholder(document, errors)
     _validate_refs(document, errors)
+    _validate_cors(document, errors)
     _validate_security_scheme(document, errors)
     _validate_paths(document, errors)
 
@@ -183,6 +192,47 @@ def _validate_security_scheme(
                 f"sigv4 security scheme {key!r} must be "
                 f"{expected_value!r}; got {actual_value!r}."
             )
+
+
+def _validate_cors(document: dict[str, Any], errors: list[str]) -> None:
+    """Validate HTTP API CORS settings for browser SigV4 clients."""
+    cors = document.get("x-amazon-apigateway-cors")
+    if not isinstance(cors, dict):
+        errors.append("OpenAPI document must include x-amazon-apigateway-cors.")
+        return
+
+    origins = cors.get("allowOrigins")
+    if not isinstance(origins, list) or not origins:
+        errors.append("CORS allowOrigins must be a non-empty list.")
+
+    methods = cors.get("allowMethods")
+    if not isinstance(methods, list):
+        errors.append("CORS allowMethods must be a list.")
+    else:
+        missing_methods = REQUIRED_CORS_METHODS - set(methods)
+        if missing_methods:
+            errors.append(
+                "CORS allowMethods missing required methods: "
+                f"{sorted(missing_methods)}."
+            )
+
+    headers = cors.get("allowHeaders")
+    if not isinstance(headers, list):
+        errors.append("CORS allowHeaders must be a list.")
+    else:
+        missing_headers = REQUIRED_CORS_HEADERS - set(headers)
+        if missing_headers:
+            errors.append(
+                "CORS allowHeaders missing required headers: "
+                f"{sorted(missing_headers)}."
+            )
+
+    max_age = cors.get("maxAge")
+    if not isinstance(max_age, int) or max_age < 0:
+        errors.append("CORS maxAge must be a non-negative integer.")
+
+    if cors.get("allowCredentials") is True and origins == ["*"]:
+        errors.append("CORS cannot use wildcard origins with credentials.")
 
 
 def _validate_operation_security(

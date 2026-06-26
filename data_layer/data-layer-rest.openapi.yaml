@@ -12,6 +12,21 @@ tags:
   - name: fundamentals
     description: Reserved fundamental data endpoints.
 
+x-amazon-apigateway-cors:
+  allowOrigins:
+    - "*"
+  allowMethods:
+    - GET
+    - POST
+    - OPTIONS
+  allowHeaders:
+    - Authorization
+    - Content-Type
+    - X-Amz-Content-Sha256
+    - X-Amz-Date
+    - X-Amz-Security-Token
+  maxAge: 300
+
 paths:
   /health:
     get:

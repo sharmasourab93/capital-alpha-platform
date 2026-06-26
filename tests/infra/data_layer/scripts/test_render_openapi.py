@@ -31,6 +31,12 @@ def test_render_openapi_excludes_disabled_paths_by_default(tmp_path) -> None:
     assert _does_not_contain_marker(document, "__LAMBDA_INVOKE_URI__")
     assert "security" not in document["paths"]["/health"]["get"]
     assert document["paths"]["/market/brokers"]["get"]["security"] == [{"sigv4": []}]
+    assert document["x-amazon-apigateway-cors"]["allowMethods"] == [
+        "GET",
+        "POST",
+        "OPTIONS",
+    ]
+    assert "Authorization" in document["x-amazon-apigateway-cors"]["allowHeaders"]
 
 
 def test_render_openapi_includes_enabled_path_groups(tmp_path) -> None:
