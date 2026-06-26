@@ -35,6 +35,8 @@ paths:
     get:
       tags:
         - market
+      security:
+        - sigv4: []
       operationId: listBrokersCompat
       responses:
         "200":
@@ -49,6 +51,8 @@ paths:
     get:
       tags:
         - market
+      security:
+        - sigv4: []
       operationId: listMarketBrokers
       responses:
         "200":
@@ -63,6 +67,8 @@ paths:
     get:
       tags:
         - market
+      security:
+        - sigv4: []
       operationId: getIntervals
       parameters:
         - $ref: "#/components/parameters/BrokerPath"
@@ -88,6 +94,8 @@ paths:
     get:
       tags:
         - market
+      security:
+        - sigv4: []
       operationId: getAllScrips
       parameters:
         - $ref: "#/components/parameters/BrokerPath"
@@ -119,6 +127,8 @@ paths:
     get:
       tags:
         - market
+      security:
+        - sigv4: []
       operationId: getLtp
       parameters:
         - $ref: "#/components/parameters/BrokerPath"
@@ -156,6 +166,8 @@ paths:
     post:
       tags:
         - market
+      security:
+        - sigv4: []
       operationId: getQuotes
       parameters:
         - $ref: "#/components/parameters/BrokerPath"
@@ -193,6 +205,8 @@ paths:
     post:
       tags:
         - market
+      security:
+        - sigv4: []
       operationId: getCandles
       parameters:
         - $ref: "#/components/parameters/BrokerPath"
@@ -232,6 +246,8 @@ paths:
     get:
       tags:
         - account
+      security:
+        - sigv4: []
       operationId: getProfile
       parameters:
         - $ref: "#/components/parameters/BrokerPath"
@@ -260,6 +276,8 @@ paths:
     get:
       tags:
         - account
+      security:
+        - sigv4: []
       operationId: getFunds
       parameters:
         - $ref: "#/components/parameters/BrokerPath"
@@ -288,6 +306,8 @@ paths:
     get:
       tags:
         - account
+      security:
+        - sigv4: []
       operationId: getHoldings
       parameters:
         - $ref: "#/components/parameters/BrokerPath"
@@ -316,6 +336,8 @@ paths:
     get:
       tags:
         - account
+      security:
+        - sigv4: []
       operationId: getPositions
       parameters:
         - $ref: "#/components/parameters/BrokerPath"
@@ -344,6 +366,8 @@ paths:
     get:
       tags:
         - account
+      security:
+        - sigv4: []
       operationId: getOrders
       parameters:
         - $ref: "#/components/parameters/BrokerPath"
@@ -372,6 +396,8 @@ paths:
     get:
       tags:
         - account
+      security:
+        - sigv4: []
       operationId: getTrades
       parameters:
         - $ref: "#/components/parameters/BrokerPath"
@@ -400,6 +426,8 @@ paths:
     get:
       tags:
         - fundamentals
+      security:
+        - sigv4: []
       operationId: fundamentalsNamespace
       parameters:
         - name: market
@@ -425,6 +453,13 @@ paths:
         payloadFormatVersion: "2.0"
 
 components:
+  securitySchemes:
+    sigv4:
+      type: apiKey
+      name: Authorization
+      in: header
+      x-amazon-apigateway-authtype: awsSigv4
+
   parameters:
     BrokerPath:
       name: broker

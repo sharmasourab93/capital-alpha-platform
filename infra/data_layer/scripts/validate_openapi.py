@@ -13,6 +13,8 @@ import yaml
 EXPECTED_INTEGRATION_TYPE = "aws_proxy"
 EXPECTED_INTEGRATION_METHOD = "POST"
 EXPECTED_PAYLOAD_FORMAT_VERSION = "2.0"
+EXPECTED_SECURITY_SCHEME = "sigv4"
+PUBLIC_OPERATIONS = {("GET", "/health")}
 LAMBDA_INVOKE_URI_PREFIX = "arn:aws:apigateway:"
 LAMBDA_INVOKE_URI_SUFFIX = "/invocations"
 LAMBDA_PLACEHOLDER = "__LAMBDA_INVOKE_URI__"
@@ -56,6 +58,7 @@ def validate_openapi(openapi_path: Path) -> list[str]:
     _validate_top_level(document, errors)
     _validate_no_placeholder(document, errors)
     _validate_refs(document, errors)
+    _validate_security_scheme(document, errors)
     _validate_paths(document, errors)
 
     return errors
@@ -140,10 +143,66 @@ def _validate_paths(document: dict[str, Any], errors: list[str]) -> None:
             if not isinstance(operation, dict):
                 errors.append(f"Operation must be an object: {method.upper()} {path}")
                 continue
+            _validate_operation_security(path, method, operation, errors)
             _validate_integration(path, method, operation, errors)
 
     if operation_count == 0:
         errors.append("OpenAPI document must define at least one operation.")
+
+
+def _validate_security_scheme(
+    document: dict[str, Any],
+    errors: list[str],
+) -> None:
+    """Validate the SigV4 security scheme exists."""
+    components = document.get("components")
+    if not isinstance(components, dict):
+        errors.append("OpenAPI document must include components.")
+        return
+
+    security_schemes = components.get("securitySchemes")
+    if not isinstance(security_schemes, dict):
+        errors.append("OpenAPI document must include components.securitySchemes.")
+        return
+
+    sigv4 = security_schemes.get(EXPECTED_SECURITY_SCHEME)
+    if not isinstance(sigv4, dict):
+        errors.append("OpenAPI document must define a sigv4 security scheme.")
+        return
+
+    expected_values = {
+        "type": "apiKey",
+        "name": "Authorization",
+        "in": "header",
+        "x-amazon-apigateway-authtype": "awsSigv4",
+    }
+    for key, expected_value in expected_values.items():
+        actual_value = sigv4.get(key)
+        if actual_value != expected_value:
+            errors.append(
+                f"sigv4 security scheme {key!r} must be "
+                f"{expected_value!r}; got {actual_value!r}."
+            )
+
+
+def _validate_operation_security(
+    path: str,
+    method: str,
+    operation: dict[str, Any],
+    errors: list[str],
+) -> None:
+    """Validate each rendered operation has the expected auth setting."""
+    method_name = method.upper()
+    operation_label = f"{method_name} {path}"
+    security = operation.get("security")
+
+    if (method_name, path) in PUBLIC_OPERATIONS:
+        if security:
+            errors.append(f"{operation_label} must remain public.")
+        return
+
+    if security != [{EXPECTED_SECURITY_SCHEME: []}]:
+        errors.append(f"{operation_label} must require sigv4 security.")
 
 
 def _validate_integration(
