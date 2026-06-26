@@ -11,10 +11,6 @@ on:
         description: Lambda function suffix used by the stack.
         required: true
         default: data-layer-rest
-      artifact_key:
-        description: S3 key for the Lambda zip.
-        required: true
-        default: lambda/data-layer-rest/latest.zip
 
 permissions:
   contents: read
@@ -34,6 +30,24 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Resolve deployment context
+        id: deployment_context
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${GITHUB_REF_NAME}" in
+            main) ENV_NAME="prod" ;;
+            qa) ENV_NAME="int" ;;
+            *) ENV_NAME="dev" ;;
+          esac
+
+          FUNCTION_SUFFIX="${{ inputs.function_suffix }}"
+          ARTIFACT_KEY="lambda/${FUNCTION_SUFFIX}/${GITHUB_SHA}.zip"
+
+          echo "env_name=${ENV_NAME}" >> "$GITHUB_OUTPUT"
+          echo "function_suffix=${FUNCTION_SUFFIX}" >> "$GITHUB_OUTPUT"
+          echo "artifact_key=${ARTIFACT_KEY}" >> "$GITHUB_OUTPUT"
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -48,16 +62,7 @@ jobs:
           rm -rf lambda_build capital-alpha-data-layer-rest-lambda.zip
           mkdir lambda_build
           python -m pip install --upgrade pip
-          python -m pip install \
-            --target lambda_build \
-            fastapi \
-            mangum==0.21.0 \
-            logzero \
-            pycryptodome \
-            pyotp \
-            python-dotenv \
-            smartapi-python \
-            websocket-client
+          python -m pip install --target lambda_build -r data_layer/requirements-lambda.txt
           rsync -a \
             --exclude '__pycache__' \
             --exclude '*.pyc' \
@@ -72,13 +77,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          case "${GITHUB_REF_NAME}" in
-            main) ENV_NAME="prod" ;;
-            qa) ENV_NAME="int" ;;
-            *) ENV_NAME="dev" ;;
-          esac
           BUCKET_NAME="$(aws cloudformation describe-stacks \
-            --stack-name "capital-alpha-${ENV_NAME}-artifacts" \
+            --stack-name "capital-alpha-${{ steps.deployment_context.outputs.env_name }}-artifacts" \
             --query "Stacks[0].Outputs[?OutputKey=='LambdaArtifactBucketName'].OutputValue" \
             --output text)"
           echo "bucket_name=${BUCKET_NAME}" >> "$GITHUB_OUTPUT"
@@ -86,7 +86,7 @@ jobs:
       - name: Upload Lambda zip
         run: |
           aws s3 cp capital-alpha-data-layer-rest-lambda.zip \
-            "s3://${{ steps.artifact_bucket.outputs.bucket_name }}/${{ inputs.artifact_key }}"
+            "s3://${{ steps.artifact_bucket.outputs.bucket_name }}/${{ steps.deployment_context.outputs.artifact_key }}"
 
       - name: Validate template
         run: |
@@ -103,12 +103,9 @@ jobs:
           ANGELONE_TOTP_SECRET: ${{ secrets.ANGELONE_TOTP_SECRET }}
         run: |
           set -euo pipefail
-          case "${GITHUB_REF_NAME}" in
-            main) ENV_NAME="prod" ;;
-            qa) ENV_NAME="int" ;;
-            *) ENV_NAME="dev" ;;
-          esac
-          FUNCTION_SUFFIX="${{ inputs.function_suffix }}"
+          ENV_NAME="${{ steps.deployment_context.outputs.env_name }}"
+          FUNCTION_SUFFIX="${{ steps.deployment_context.outputs.function_suffix }}"
+          ARTIFACT_KEY="${{ steps.deployment_context.outputs.artifact_key }}"
           PARAM_FILE="infra/data_layer/params/lambda/lambda-${ENV_NAME}.json"
           STACK_NAME="capital-alpha-${ENV_NAME}-${FUNCTION_SUFFIX}-lambda"
           mapfile -t PARAM_OVERRIDES < <(jq -r '.[] | "\(.ParameterKey)=\(.ParameterValue)"' "$PARAM_FILE")
@@ -128,6 +125,8 @@ jobs:
 
           PARAM_OVERRIDES+=(
             "PythonUnbuffered=1"
+            "FunctionNameSuffix=${FUNCTION_SUFFIX}"
+            "CodeS3Key=${ARTIFACT_KEY}"
             "AngelOneApiKey=${ANGELONE_API_KEY}"
             "AngelOneApiSecret=${ANGELONE_API_SECRET}"
             "AngelOneClientCode=${ANGELONE_CLIENTCODE}"
