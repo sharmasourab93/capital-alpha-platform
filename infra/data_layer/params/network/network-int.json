@@ -28,8 +28,16 @@
     "ParameterValue": "10.41.11.0/24"
   },
   {
-    "ParameterKey": "NatGatewayMode",
-    "ParameterValue": "Single"
+    "ParameterKey": "EgressMode",
+    "ParameterValue": "None"
+  },
+  {
+    "ParameterKey": "NatInstanceType",
+    "ParameterValue": "t4g.nano"
+  },
+  {
+    "ParameterKey": "NatInstanceAmiId",
+    "ParameterValue": ""
   },
   {
     "ParameterKey": "AllowedHttpsEgressCidr1",
