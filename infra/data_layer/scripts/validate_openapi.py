@@ -15,6 +15,8 @@ EXPECTED_INTEGRATION_METHOD = "POST"
 EXPECTED_PAYLOAD_FORMAT_VERSION = "2.0"
 EXPECTED_SECURITY_SCHEME = "sigv4"
 PUBLIC_OPERATIONS = {("GET", "/health")}
+REQUIRED_COMMON_RESPONSES = {"400", "429", "500"}
+REQUIRED_SECURED_RESPONSES = {"401", "403"}
 REQUIRED_CORS_METHODS = {"GET", "POST", "OPTIONS"}
 REQUIRED_CORS_HEADERS = {
     "Authorization",
@@ -153,6 +155,7 @@ def _validate_paths(document: dict[str, Any], errors: list[str]) -> None:
                 errors.append(f"Operation must be an object: {method.upper()} {path}")
                 continue
             _validate_operation_security(path, method, operation, errors)
+            _validate_operation_responses(path, method, operation, errors)
             _validate_integration(path, method, operation, errors)
 
     if operation_count == 0:
@@ -253,6 +256,32 @@ def _validate_operation_security(
 
     if security != [{EXPECTED_SECURITY_SCHEME: []}]:
         errors.append(f"{operation_label} must require sigv4 security.")
+
+
+def _validate_operation_responses(
+    path: str,
+    method: str,
+    operation: dict[str, Any],
+    errors: list[str],
+) -> None:
+    """Validate operations document expected gateway responses."""
+    method_name = method.upper()
+    operation_label = f"{method_name} {path}"
+    responses = operation.get("responses")
+    if not isinstance(responses, dict):
+        errors.append(f"{operation_label} must define responses.")
+        return
+
+    required_responses = set(REQUIRED_COMMON_RESPONSES)
+    if (method_name, path) not in PUBLIC_OPERATIONS:
+        required_responses.update(REQUIRED_SECURED_RESPONSES)
+
+    missing_responses = required_responses - set(responses)
+    if missing_responses:
+        errors.append(
+            f"{operation_label} missing required responses: "
+            f"{sorted(missing_responses)}."
+        )
 
 
 def _validate_integration(

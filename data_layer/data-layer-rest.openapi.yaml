@@ -40,6 +40,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
       x-amazon-apigateway-integration:
         type: aws_proxy
         httpMethod: POST
@@ -56,6 +62,16 @@ paths:
       responses:
         "200":
           $ref: "#/components/responses/BrokerList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
       x-amazon-apigateway-integration:
         type: aws_proxy
         httpMethod: POST
@@ -72,6 +88,16 @@ paths:
       responses:
         "200":
           $ref: "#/components/responses/BrokerList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
       x-amazon-apigateway-integration:
         type: aws_proxy
         httpMethod: POST
@@ -95,8 +121,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IntervalsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
         "500":
           $ref: "#/components/responses/InternalServerError"
       x-amazon-apigateway-integration:
@@ -122,10 +156,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ScripListBrokerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/BrokerNotFound"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
         "502":
           $ref: "#/components/responses/BrokerOperationError"
         "503":
@@ -161,10 +203,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MarketDataBrokerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/BrokerNotFound"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
         "502":
           $ref: "#/components/responses/BrokerOperationError"
         "503":
@@ -200,10 +250,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MarketDataBrokerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/BrokerNotFound"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
         "502":
           $ref: "#/components/responses/BrokerOperationError"
         "503":
@@ -239,10 +297,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CandleBrokerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/BrokerNotFound"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
         "502":
           $ref: "#/components/responses/BrokerOperationError"
         "503":
@@ -269,10 +335,18 @@ paths:
       responses:
         "200":
           $ref: "#/components/responses/AccountBrokerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/BrokerNotFound"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
         "502":
           $ref: "#/components/responses/BrokerOperationError"
         "503":
@@ -299,10 +373,18 @@ paths:
       responses:
         "200":
           $ref: "#/components/responses/AccountBrokerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/BrokerNotFound"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
         "502":
           $ref: "#/components/responses/BrokerOperationError"
         "503":
@@ -329,10 +411,18 @@ paths:
       responses:
         "200":
           $ref: "#/components/responses/AccountBrokerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/BrokerNotFound"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
         "502":
           $ref: "#/components/responses/BrokerOperationError"
         "503":
@@ -359,10 +449,18 @@ paths:
       responses:
         "200":
           $ref: "#/components/responses/AccountBrokerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/BrokerNotFound"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
         "502":
           $ref: "#/components/responses/BrokerOperationError"
         "503":
@@ -389,10 +487,18 @@ paths:
       responses:
         "200":
           $ref: "#/components/responses/AccountBrokerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/BrokerNotFound"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
         "502":
           $ref: "#/components/responses/BrokerOperationError"
         "503":
@@ -419,10 +525,18 @@ paths:
       responses:
         "200":
           $ref: "#/components/responses/AccountBrokerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/BrokerNotFound"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
         "502":
           $ref: "#/components/responses/BrokerOperationError"
         "503":
@@ -457,8 +571,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FundamentalsNamespaceResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
         "500":
           $ref: "#/components/responses/InternalServerError"
       x-amazon-apigateway-integration:
@@ -502,6 +624,24 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/AccountBrokerResponse"
+    BadRequest:
+      description: Malformed request.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Missing or invalid IAM SigV4 authorization.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Caller is not allowed to invoke this API route.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
     BrokerNotFound:
       description: Broker is not registered.
       content:
@@ -544,6 +684,12 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
     BrokerUnavailable:
       description: Broker adapter is unavailable or misconfigured.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    TooManyRequests:
+      description: Request was throttled.
       content:
         application/json:
           schema:
