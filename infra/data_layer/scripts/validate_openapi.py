@@ -118,9 +118,7 @@ def _validate_refs(document: dict[str, Any], errors: list[str]) -> None:
         ref = value.get("$ref")
         if isinstance(ref, str) and ref.startswith("#/"):
             if _resolve_ref(document, ref) is None:
-                errors.append(
-                    f"Unresolved local reference at {location}: {ref}"
-                )
+                errors.append(f"Unresolved local reference at {location}: {ref}")
 
 
 def _validate_paths(document: dict[str, Any], errors: list[str]) -> None:
@@ -140,9 +138,7 @@ def _validate_paths(document: dict[str, Any], errors: list[str]) -> None:
                 continue
             operation_count += 1
             if not isinstance(operation, dict):
-                errors.append(
-                    f"Operation must be an object: {method.upper()} {path}"
-                )
+                errors.append(f"Operation must be an object: {method.upper()} {path}")
                 continue
             _validate_integration(path, method, operation, errors)
 
@@ -160,9 +156,7 @@ def _validate_integration(
     operation_label = f"{method.upper()} {path}"
     integration = operation.get("x-amazon-apigateway-integration")
     if not isinstance(integration, dict):
-        errors.append(
-            f"Missing API Gateway integration for {operation_label}."
-        )
+        errors.append(f"Missing API Gateway integration for {operation_label}.")
         return
 
     integration_type = integration.get("type")
@@ -195,9 +189,7 @@ def _validate_integration(
         and uri.endswith(LAMBDA_INVOKE_URI_SUFFIX)
         and ":lambda:path/2015-03-31/functions/" in uri
     ):
-        errors.append(
-            f"{operation_label} integration uri is not a Lambda invoke URI."
-        )
+        errors.append(f"{operation_label} integration uri is not a Lambda invoke URI.")
 
 
 def _resolve_ref(document: dict[str, Any], ref: str) -> Any | None:

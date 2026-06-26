@@ -137,9 +137,7 @@ def test_ltp_route_uses_quote_ltp_for_many_symbols() -> None:
 
 def test_ltp_route_rejects_more_than_max_symbols() -> None:
     """Verify LTP query symbols follow SmartAPI request limits."""
-    symbols = ",".join(
-        f"SYM{index}" for index in range(MAX_MARKET_SYMBOLS + 1)
-    )
+    symbols = ",".join(f"SYM{index}" for index in range(MAX_MARKET_SYMBOLS + 1))
     service = _Service()
 
     with pytest.raises(HTTPException) as exc_info:
@@ -391,9 +389,7 @@ class _Service:
     def get_ltp(self, request) -> LtpResponse:
         """Return fake LTP response."""
         self._raise_if_needed(request.broker, "get_ltp")
-        self.calls.append(
-            ("get_ltp", request.broker, request.exchange, request.symbol)
-        )
+        self.calls.append(("get_ltp", request.broker, request.exchange, request.symbol))
         return LtpResponse(
             broker=request.broker,
             operation="get_ltp",
@@ -453,9 +449,7 @@ class _Service:
     def get_profile(self, request) -> AccountResponse:
         """Return fake profile data."""
         self.calls.append(("get_profile", request.broker))
-        return _account_response(
-            request.broker, "get_profile", {"name": "demo"}
-        )
+        return _account_response(request.broker, "get_profile", {"name": "demo"})
 
     def get_funds(self, request) -> AccountResponse:
         """Return fake funds data."""

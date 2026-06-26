@@ -15,6 +15,16 @@ on:
         description: S3 key for the rendered OpenAPI YAML.
         required: true
         default: openapi/data-layer-rest.openapi.yaml
+      enable_account_api:
+        description: Include account API paths in the rendered OpenAPI document.
+        required: true
+        type: boolean
+        default: false
+      enable_fundamentals_api:
+        description: Include fundamentals API paths in the rendered OpenAPI document.
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -86,8 +96,21 @@ jobs:
           REGION="${{ inputs.aws_region }}"
           LAMBDA_ARN="${{ steps.stack_outputs.outputs.lambda_arn }}"
           INVOKE_URI="arn:aws:apigateway:${REGION}:lambda:path/2015-03-31/functions/${LAMBDA_ARN}/invocations"
+          RENDER_ARGS=()
 
-          sed "s#__LAMBDA_INVOKE_URI__#${INVOKE_URI}#g" "$SOURCE_OPENAPI" > "$RENDERED_OPENAPI"
+          if [[ "${{ inputs.enable_account_api }}" == "true" ]]; then
+            RENDER_ARGS+=(--enable-account)
+          fi
+
+          if [[ "${{ inputs.enable_fundamentals_api }}" == "true" ]]; then
+            RENDER_ARGS+=(--enable-fundamentals)
+          fi
+
+          python infra/data_layer/scripts/render_openapi.py \
+            --source "$SOURCE_OPENAPI" \
+            --output "$RENDERED_OPENAPI" \
+            --lambda-invoke-uri "$INVOKE_URI" \
+            "${RENDER_ARGS[@]}"
 
       - name: Validate rendered OpenAPI document
         shell: bash

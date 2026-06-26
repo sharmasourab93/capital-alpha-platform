@@ -227,6 +227,8 @@ paths:
         payloadFormatVersion: "2.0"
 
   /account/{broker}/profile:
+    x-capital-alpha-group: account
+    x-capital-alpha-enabled: false
     get:
       tags:
         - account
@@ -253,6 +255,8 @@ paths:
         payloadFormatVersion: "2.0"
 
   /account/{broker}/funds:
+    x-capital-alpha-group: account
+    x-capital-alpha-enabled: false
     get:
       tags:
         - account
@@ -279,6 +283,8 @@ paths:
         payloadFormatVersion: "2.0"
 
   /account/{broker}/holdings:
+    x-capital-alpha-group: account
+    x-capital-alpha-enabled: false
     get:
       tags:
         - account
@@ -305,6 +311,8 @@ paths:
         payloadFormatVersion: "2.0"
 
   /account/{broker}/positions:
+    x-capital-alpha-group: account
+    x-capital-alpha-enabled: false
     get:
       tags:
         - account
@@ -331,6 +339,8 @@ paths:
         payloadFormatVersion: "2.0"
 
   /account/{broker}/orders:
+    x-capital-alpha-group: account
+    x-capital-alpha-enabled: false
     get:
       tags:
         - account
@@ -357,6 +367,8 @@ paths:
         payloadFormatVersion: "2.0"
 
   /account/{broker}/trades:
+    x-capital-alpha-group: account
+    x-capital-alpha-enabled: false
     get:
       tags:
         - account
@@ -383,6 +395,8 @@ paths:
         payloadFormatVersion: "2.0"
 
   /funda/{market}:
+    x-capital-alpha-group: fundamentals
+    x-capital-alpha-enabled: false
     get:
       tags:
         - fundamentals
