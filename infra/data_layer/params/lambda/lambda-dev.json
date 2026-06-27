@@ -33,7 +33,7 @@
   },
   {
     "ParameterKey": "MemorySize",
-    "ParameterValue": "256"
+    "ParameterValue": "512"
   },
   {
     "ParameterKey": "TimeoutSeconds",
@@ -49,7 +49,7 @@
   },
   {
     "ParameterKey": "LogLevel",
-    "ParameterValue": "INFO"
+    "ParameterValue": "DEBUG"
   },
   {
     "ParameterKey": "AttachToVpc",

@@ -33,23 +33,23 @@
   },
   {
     "ParameterKey": "MemorySize",
-    "ParameterValue": "256"
+    "ParameterValue": "512"
   },
   {
     "ParameterKey": "TimeoutSeconds",
-    "ParameterValue": "20"
+    "ParameterValue": "90"
   },
   {
     "ParameterKey": "ReservedConcurrentExecutions",
-    "ParameterValue": "10"
+    "ParameterValue": "0"
   },
   {
     "ParameterKey": "LogRetentionDays",
-    "ParameterValue": "30"
+    "ParameterValue": "14"
   },
   {
     "ParameterKey": "LogLevel",
-    "ParameterValue": "INFO"
+    "ParameterValue": "DEBUG"
   },
   {
     "ParameterKey": "AttachToVpc",

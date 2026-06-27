@@ -37,11 +37,11 @@
   },
   {
     "ParameterKey": "TimeoutSeconds",
-    "ParameterValue": "20"
+    "ParameterValue": "90"
   },
   {
     "ParameterKey": "ReservedConcurrentExecutions",
-    "ParameterValue": "20"
+    "ParameterValue": "0"
   },
   {
     "ParameterKey": "LogRetentionDays",
