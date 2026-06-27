@@ -28,20 +28,16 @@
     "ParameterValue": ""
   },
   {
-    "ParameterKey": "CodeS3Key",
-    "ParameterValue": "lambda/data-layer-rest/latest.zip"
-  },
-  {
     "ParameterKey": "CodeS3ObjectVersion",
     "ParameterValue": ""
   },
   {
     "ParameterKey": "MemorySize",
-    "ParameterValue": "256"
+    "ParameterValue": "512"
   },
   {
     "ParameterKey": "TimeoutSeconds",
-    "ParameterValue": "20"
+    "ParameterValue": "60"
   },
   {
     "ParameterKey": "ReservedConcurrentExecutions",
@@ -53,7 +49,7 @@
   },
   {
     "ParameterKey": "LogLevel",
-    "ParameterValue": "INFO"
+    "ParameterValue": "DEBUG"
   },
   {
     "ParameterKey": "AttachToVpc",

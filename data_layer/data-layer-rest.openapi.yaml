@@ -1,0 +1,955 @@
+openapi: 3.0.1
+info:
+  title: Capital Alpha Data Layer API
+  version: 1.0.0
+tags:
+  - name: health
+    description: Runtime health endpoints.
+  - name: market
+    description: Market data and broker discovery endpoints.
+  - name: account
+    description: Broker account endpoints.
+  - name: fundamentals
+    description: Reserved fundamental data endpoints.
+
+x-amazon-apigateway-cors:
+  allowOrigins:
+    - "*"
+  allowMethods:
+    - GET
+    - POST
+    - OPTIONS
+  allowHeaders:
+    - Authorization
+    - Content-Type
+    - X-Amz-Content-Sha256
+    - X-Amz-Date
+    - X-Amz-Security-Token
+  maxAge: 300
+
+paths:
+  /health:
+    get:
+      tags:
+        - health
+      operationId: health
+      responses:
+        "200":
+          description: Runtime health.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: __LAMBDA_INVOKE_URI__
+        payloadFormatVersion: "2.0"
+
+  /brokers:
+    get:
+      tags:
+        - market
+      security:
+        - sigv4: []
+      operationId: listBrokersCompat
+      responses:
+        "200":
+          $ref: "#/components/responses/BrokerList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: __LAMBDA_INVOKE_URI__
+        payloadFormatVersion: "2.0"
+
+  /market/brokers:
+    get:
+      tags:
+        - market
+      security:
+        - sigv4: []
+      operationId: listMarketBrokers
+      responses:
+        "200":
+          $ref: "#/components/responses/BrokerList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: __LAMBDA_INVOKE_URI__
+        payloadFormatVersion: "2.0"
+
+  /market/{broker}/{exchange}/intervals:
+    get:
+      tags:
+        - market
+      security:
+        - sigv4: []
+      operationId: getIntervals
+      parameters:
+        - $ref: "#/components/parameters/BrokerPath"
+        - $ref: "#/components/parameters/ExchangePath"
+      responses:
+        "200":
+          description: Supported candle intervals.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntervalsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: __LAMBDA_INVOKE_URI__
+        payloadFormatVersion: "2.0"
+
+  /market/{broker}/{exchange}/scrips:
+    get:
+      tags:
+        - market
+      security:
+        - sigv4: []
+      operationId: getAllScrips
+      parameters:
+        - $ref: "#/components/parameters/BrokerPath"
+        - $ref: "#/components/parameters/ExchangePath"
+      responses:
+        "200":
+          description: Broker scrip list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScripListBrokerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/BrokerNotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "502":
+          $ref: "#/components/responses/BrokerOperationError"
+        "503":
+          $ref: "#/components/responses/BrokerUnavailable"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: __LAMBDA_INVOKE_URI__
+        payloadFormatVersion: "2.0"
+
+  /market/{broker}/{exchange}/ltp:
+    get:
+      tags:
+        - market
+      security:
+        - sigv4: []
+      operationId: getLtp
+      parameters:
+        - $ref: "#/components/parameters/BrokerPath"
+        - $ref: "#/components/parameters/ExchangePath"
+        - name: symbol
+          in: query
+          required: true
+          description: Single symbol or comma-separated symbols.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Last traded price.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketDataBrokerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/BrokerNotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "502":
+          $ref: "#/components/responses/BrokerOperationError"
+        "503":
+          $ref: "#/components/responses/BrokerUnavailable"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: __LAMBDA_INVOKE_URI__
+        payloadFormatVersion: "2.0"
+
+  /market/{broker}/{exchange}/quotes:
+    post:
+      tags:
+        - market
+      security:
+        - sigv4: []
+      operationId: getQuotes
+      parameters:
+        - $ref: "#/components/parameters/BrokerPath"
+        - $ref: "#/components/parameters/ExchangePath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuotePayload"
+      responses:
+        "200":
+          description: Quote data.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketDataBrokerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/BrokerNotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "502":
+          $ref: "#/components/responses/BrokerOperationError"
+        "503":
+          $ref: "#/components/responses/BrokerUnavailable"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: __LAMBDA_INVOKE_URI__
+        payloadFormatVersion: "2.0"
+
+  /market/{broker}/{exchange}/candles:
+    post:
+      tags:
+        - market
+      security:
+        - sigv4: []
+      operationId: getCandles
+      parameters:
+        - $ref: "#/components/parameters/BrokerPath"
+        - $ref: "#/components/parameters/ExchangePath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CandlePayload"
+      responses:
+        "200":
+          description: Candle data.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CandleBrokerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/BrokerNotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "502":
+          $ref: "#/components/responses/BrokerOperationError"
+        "503":
+          $ref: "#/components/responses/BrokerUnavailable"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: __LAMBDA_INVOKE_URI__
+        payloadFormatVersion: "2.0"
+
+  /account/{broker}/profile:
+    x-capital-alpha-group: account
+    x-capital-alpha-enabled: false
+    get:
+      tags:
+        - account
+      security:
+        - sigv4: []
+      operationId: getProfile
+      parameters:
+        - $ref: "#/components/parameters/BrokerPath"
+      responses:
+        "200":
+          $ref: "#/components/responses/AccountBrokerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/BrokerNotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "502":
+          $ref: "#/components/responses/BrokerOperationError"
+        "503":
+          $ref: "#/components/responses/BrokerUnavailable"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: __LAMBDA_INVOKE_URI__
+        payloadFormatVersion: "2.0"
+
+  /account/{broker}/funds:
+    x-capital-alpha-group: account
+    x-capital-alpha-enabled: false
+    get:
+      tags:
+        - account
+      security:
+        - sigv4: []
+      operationId: getFunds
+      parameters:
+        - $ref: "#/components/parameters/BrokerPath"
+      responses:
+        "200":
+          $ref: "#/components/responses/AccountBrokerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/BrokerNotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "502":
+          $ref: "#/components/responses/BrokerOperationError"
+        "503":
+          $ref: "#/components/responses/BrokerUnavailable"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: __LAMBDA_INVOKE_URI__
+        payloadFormatVersion: "2.0"
+
+  /account/{broker}/holdings:
+    x-capital-alpha-group: account
+    x-capital-alpha-enabled: false
+    get:
+      tags:
+        - account
+      security:
+        - sigv4: []
+      operationId: getHoldings
+      parameters:
+        - $ref: "#/components/parameters/BrokerPath"
+      responses:
+        "200":
+          $ref: "#/components/responses/AccountBrokerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/BrokerNotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "502":
+          $ref: "#/components/responses/BrokerOperationError"
+        "503":
+          $ref: "#/components/responses/BrokerUnavailable"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: __LAMBDA_INVOKE_URI__
+        payloadFormatVersion: "2.0"
+
+  /account/{broker}/positions:
+    x-capital-alpha-group: account
+    x-capital-alpha-enabled: false
+    get:
+      tags:
+        - account
+      security:
+        - sigv4: []
+      operationId: getPositions
+      parameters:
+        - $ref: "#/components/parameters/BrokerPath"
+      responses:
+        "200":
+          $ref: "#/components/responses/AccountBrokerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/BrokerNotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "502":
+          $ref: "#/components/responses/BrokerOperationError"
+        "503":
+          $ref: "#/components/responses/BrokerUnavailable"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: __LAMBDA_INVOKE_URI__
+        payloadFormatVersion: "2.0"
+
+  /account/{broker}/orders:
+    x-capital-alpha-group: account
+    x-capital-alpha-enabled: false
+    get:
+      tags:
+        - account
+      security:
+        - sigv4: []
+      operationId: getOrders
+      parameters:
+        - $ref: "#/components/parameters/BrokerPath"
+      responses:
+        "200":
+          $ref: "#/components/responses/AccountBrokerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/BrokerNotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "502":
+          $ref: "#/components/responses/BrokerOperationError"
+        "503":
+          $ref: "#/components/responses/BrokerUnavailable"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: __LAMBDA_INVOKE_URI__
+        payloadFormatVersion: "2.0"
+
+  /account/{broker}/trades:
+    x-capital-alpha-group: account
+    x-capital-alpha-enabled: false
+    get:
+      tags:
+        - account
+      security:
+        - sigv4: []
+      operationId: getTrades
+      parameters:
+        - $ref: "#/components/parameters/BrokerPath"
+      responses:
+        "200":
+          $ref: "#/components/responses/AccountBrokerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/BrokerNotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "502":
+          $ref: "#/components/responses/BrokerOperationError"
+        "503":
+          $ref: "#/components/responses/BrokerUnavailable"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: __LAMBDA_INVOKE_URI__
+        payloadFormatVersion: "2.0"
+
+  /funda/{market}:
+    x-capital-alpha-group: fundamentals
+    x-capital-alpha-enabled: false
+    get:
+      tags:
+        - fundamentals
+      security:
+        - sigv4: []
+      operationId: fundamentalsNamespace
+      parameters:
+        - name: market
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reserved fundamentals namespace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FundamentalsNamespaceResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: __LAMBDA_INVOKE_URI__
+        payloadFormatVersion: "2.0"
+
+components:
+  securitySchemes:
+    sigv4:
+      type: apiKey
+      name: Authorization
+      in: header
+      x-amazon-apigateway-authtype: awsSigv4
+
+  parameters:
+    BrokerPath:
+      name: broker
+      in: path
+      required: true
+      schema:
+        type: string
+    ExchangePath:
+      name: exchange
+      in: path
+      required: true
+      schema:
+        type: string
+
+  responses:
+    BrokerList:
+      description: Registered brokers.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BrokerListResponse"
+    AccountBrokerResponse:
+      description: Account operation response.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AccountBrokerResponse"
+    BadRequest:
+      description: Malformed request.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Missing or invalid IAM SigV4 authorization.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Caller is not allowed to invoke this API route.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    BrokerNotFound:
+      description: Broker is not registered.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ValidationFailed:
+      description: Request or canonical validation failed.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/ErrorResponse"
+              - $ref: "#/components/schemas/HTTPValidationError"
+          examples:
+            fastapiValidation:
+              summary: FastAPI request validation error.
+              value:
+                detail:
+                  - loc:
+                      - body
+                      - mode
+                    msg: Input should be 'LTP', 'OHLC' or 'FULL'
+                    type: literal_error
+            canonicalValidation:
+              summary: Canonical broker validation error.
+              value:
+                detail:
+                  code: BROKER_VALIDATION_ERROR
+                  message: Too many symbols requested
+                  details:
+                    field: symbol
+                    max_symbols: 50
+                    actual_symbols: 51
+    BrokerOperationError:
+      description: Broker operation failed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    BrokerUnavailable:
+      description: Broker adapter is unavailable or misconfigured.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    TooManyRequests:
+      description: Request was throttled.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InternalServerError:
+      description: Internal server error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          example: ok
+
+    BrokerListResponse:
+      type: object
+      required:
+        - brokers
+      properties:
+        brokers:
+          type: array
+          items:
+            type: string
+
+    Interval:
+      type: object
+      required:
+        - label
+        - value
+      properties:
+        label:
+          type: string
+          example: 1m
+        value:
+          type: string
+          example: ONE_MINUTE
+
+    IntervalsResponse:
+      type: object
+      required:
+        - broker
+        - exchange
+        - intervals
+      properties:
+        broker:
+          type: string
+        exchange:
+          type: string
+        intervals:
+          type: array
+          items:
+            $ref: "#/components/schemas/Interval"
+
+    BrokerResponseBase:
+      type: object
+      required:
+        - broker
+        - operation
+        - success
+      properties:
+        broker:
+          type: string
+        operation:
+          type: string
+        success:
+          type: boolean
+        message:
+          type: string
+          nullable: true
+        error_code:
+          type: string
+          nullable: true
+
+    BrokerResponse:
+      allOf:
+        - $ref: "#/components/schemas/BrokerResponseBase"
+        - type: object
+          required:
+            - data
+          properties:
+            data:
+              description: Canonical broker operation payload.
+
+    MarketDataBrokerResponse:
+      allOf:
+        - $ref: "#/components/schemas/BrokerResponseBase"
+        - type: object
+          required:
+            - data
+          properties:
+            data:
+              type: object
+              additionalProperties: true
+              nullable: true
+              description: Canonical market data payload.
+
+    ScripListBrokerResponse:
+      allOf:
+        - $ref: "#/components/schemas/BrokerResponseBase"
+        - type: object
+          required:
+            - data
+          properties:
+            data:
+              type: array
+              items:
+                oneOf:
+                  - type: string
+                  - type: object
+                    additionalProperties: true
+              description: Canonical instrument list payload.
+
+    CandleBrokerResponse:
+      allOf:
+        - $ref: "#/components/schemas/BrokerResponseBase"
+        - type: object
+          required:
+            - data
+          properties:
+            data:
+              type: array
+              items:
+                type: array
+                items:
+                  oneOf:
+                    - type: string
+                    - type: number
+                    - type: integer
+                    - type: boolean
+              description: Canonical candle-series payload.
+
+    AccountBrokerResponse:
+      allOf:
+        - $ref: "#/components/schemas/BrokerResponseBase"
+        - type: object
+          required:
+            - data
+            - status
+          properties:
+            data:
+              description: Canonical account operation payload.
+            status:
+              type: string
+              example: work_in_progress
+
+    FundamentalsNamespaceResponse:
+      type: object
+      required:
+        - market
+        - status
+        - message
+      properties:
+        market:
+          type: string
+        status:
+          type: string
+          example: work_in_progress
+        message:
+          type: string
+
+    QuotePayload:
+      type: object
+      required:
+        - symbols
+      properties:
+        symbols:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: string
+            minLength: 1
+        mode:
+          type: string
+          enum:
+            - LTP
+            - OHLC
+            - FULL
+          default: FULL
+
+    CandlePayload:
+      type: object
+      required:
+        - symbol
+        - interval
+        - from_time
+        - to_time
+      properties:
+        symbol:
+          type: string
+          minLength: 1
+        interval:
+          type: string
+          minLength: 1
+        from_time:
+          type: string
+          minLength: 1
+        to_time:
+          type: string
+          minLength: 1
+
+    HTTPValidationError:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: array
+          items:
+            $ref: "#/components/schemas/RequestValidationError"
+
+    RequestValidationError:
+      type: object
+      required:
+        - loc
+        - msg
+        - type
+      properties:
+        loc:
+          type: array
+          items:
+            oneOf:
+              - type: string
+              - type: integer
+        msg:
+          type: string
+        type:
+          type: string
+        input:
+          nullable: true
+        ctx:
+          type: object
+          additionalProperties: true
+
+    ErrorResponse:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          $ref: "#/components/schemas/ErrorDetail"
+
+    ErrorDetail:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+          nullable: true

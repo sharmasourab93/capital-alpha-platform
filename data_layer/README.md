@@ -1,127 +1,168 @@
 # Capital Alpha Data Layer
 
-The data layer is Capital Alpha's broker-facing boundary. It exposes
-broker-neutral contracts to application runtimes and delegates broker-specific
-work to adapters such as AngelOne SmartAPI.
+`data_layer` is the broker-facing service boundary for Capital Alpha. It
+exposes broker-neutral REST contracts to clients and keeps provider-specific
+translation, credentials, sessions, and SDK calls inside broker adapters.
 
-This README is a navigation guide. Detailed architecture, API contracts, ADRs,
-and operational runbooks should live under `/docs`.
+The current runtime is a FastAPI application that can run locally or behind AWS
+Lambda/API Gateway. Market-data endpoints are active. Account and fundamentals
+namespaces are present but marked work-in-progress.
 
-## Quick View
+## Quick Start
 
-```text
-FastAPI / Lambda / Future Runtime
-        |
-        v
-Canonical Broker Service
-        |
-        v
-Broker Registry
-        |
-        v
-Broker Adapter
-        |
-        v
-Broker Facade
-        |
-        v
-SmartAPI / Broker SDK
+Run the REST runtime locally.
+
+```powershell
+.\at-venv\Scripts\python.exe -m data_layer.runtimes.rest.run
 ```
 
-Dependency direction is intentionally one-way: runtimes call canonical
-services, canonical services call registered adapters, and adapters own broker
-translation.
+Local runtime settings are environment-driven.
 
-## Layer Map
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `REST_HOST` | `0.0.0.0` | Local bind host |
+| `REST_PORT` | `8001` | Local bind port |
+| `REST_RELOAD` | `false` | Uvicorn reload flag |
+| `REST_LOG_LEVEL` | `debug` | Runtime log level |
 
-```text
-data_layer/
-|-- abstractions/
-|   `-- shared low-level broker and instrument contracts
-|
-|-- brokers/
-|   |-- canonical/
-|   |   |-- broker-neutral request and response models
-|   |   |-- broker registry
-|   |   `-- canonical REST service
-|   |
-|   |-- angelone/
-|   |   `-- rest/
-|   |       |-- angel_instrument.py
-|   |       |-- angel_rest_broker.py
-|   |       |-- angelone_adapter.py
-|   |       `-- smartapi/
-|   |           |-- account.py
-|   |           |-- errors.py
-|   |           |-- instrument_resolver.py
-|   |           |-- payloads.py
-|   |           |-- session.py
-|   |           `-- transport.py
-|   |
-|   `-- rest_registry.py
-|
-|-- fundamental/
-|   `-- reserved for fundamentals providers
-|
-|-- market/
-|   `-- reserved for shared market-data concerns
-|
-|-- derivatives/
-|   `-- being considered for futures and options modules
-|
-`-- runtimes/
-    |-- rest/
-    |   |-- FastAPI app, routes, schemas, handlers, logging
-    |   |-- run.py
-    |   `-- lambda_handler.py
-    |
-    `-- wss/
-        `-- reserved for websocket runtime work
+AngelOne credentials are read from environment variables when credentials are
+not explicitly injected.
+
+| Variable | Purpose |
+| --- | --- |
+| `ANGELONE_API_KEY` | SmartAPI app API key |
+| `ANGELONE_CLIENT_CODE` | AngelOne client code |
+| `ANGELONE_PASSWORD` | AngelOne password |
+| `ANGELONE_TOTP_SECRET` | TOTP secret for login |
+
+## API Surface
+
+| Method | Path | Status | Notes |
+| --- | --- | --- | --- |
+| `GET` | `/health` | Ready | Public health check |
+| `GET` | `/brokers` | Ready | Compatibility broker discovery path |
+| `GET` | `/market/brokers` | Ready | Market broker discovery |
+| `GET` | `/market/{broker}/{exchange}/intervals` | Ready | Candle interval metadata |
+| `GET` | `/market/{broker}/{exchange}/scrips` | Ready | Known scrip labels |
+| `GET` | `/market/{broker}/{exchange}/ltp?symbol=...` | Ready | One or more comma-separated symbols |
+| `POST` | `/market/{broker}/{exchange}/quotes` | Ready | `LTP`, `OHLC`, `FULL` modes |
+| `POST` | `/market/{broker}/{exchange}/candles` | Ready | Historical candle data |
+| `GET` | `/account/{broker}/profile` | WIP | Returns `work_in_progress` status |
+| `GET` | `/account/{broker}/funds` | WIP | Returns `work_in_progress` status |
+| `GET` | `/account/{broker}/holdings` | WIP | Returns `work_in_progress` status |
+| `GET` | `/account/{broker}/positions` | WIP | Returns `work_in_progress` status |
+| `GET` | `/account/{broker}/orders` | WIP | Returns `work_in_progress` status |
+| `GET` | `/account/{broker}/trades` | WIP | Returns `work_in_progress` status |
+| `GET` | `/funda/{market}` | WIP | Reserved fundamentals namespace |
+
+The REST contract is documented in
+[`data-layer-rest.openapi.yaml`](./data-layer-rest.openapi.yaml).
+
+## Architecture
+
+The data layer is organized around a canonical broker boundary. Runtimes call
+canonical services. Canonical services call registered broker adapters. Broker
+adapters own provider-specific translation.
+
+```mermaid
+flowchart TB
+    subgraph Runtime["Runtime boundary"]
+        Rest["FastAPI REST runtime<br/>local or Lambda"]
+        Routes["Route modules<br/>health, brokers, market, account, funda"]
+    end
+
+    subgraph Canonical["Canonical broker layer"]
+        Models["Broker-neutral models"]
+        Service["BrokerRestService"]
+        Registry["BrokerRegistry"]
+    end
+
+    subgraph Broker["Broker implementation"]
+        Adapter["AngelOneRestAdapter"]
+        Facade["AngelRestBroker"]
+        SmartApi["SmartAPI transport<br/>session, payloads, resolver"]
+    end
+
+    Rest --> Routes
+    Routes --> Models
+    Routes --> Service
+    Service --> Registry
+    Registry --> Adapter
+    Adapter --> Facade
+    Facade --> SmartApi
+```
+
+Responsibility boundaries are deliberate.
+
+```mermaid
+flowchart LR
+    subgraph RestOwns["REST runtime owns"]
+        Http["HTTP routes"]
+        Validation["Pydantic request validation"]
+        ErrorMapping["HTTP error mapping"]
+        Logging["Request logging"]
+    end
+
+    subgraph CanonicalOwns["Canonical layer owns"]
+        Contracts["Broker-neutral contracts"]
+        Dispatch["Broker dispatch"]
+        Errors["Canonical errors"]
+    end
+
+    subgraph AdapterOwns["Broker adapters own"]
+        Translation["Provider payload translation"]
+        Session["Provider sessions and auth"]
+        Instruments["Instrument resolution"]
+        Sdk["Broker SDK calls"]
+    end
+
+    RestOwns --> CanonicalOwns
+    CanonicalOwns --> AdapterOwns
 ```
 
 ## Request Flow
 
-```text
-POST /market/angelone/NSE/candles
-        |
-        v
-runtimes.rest.routes.market
-        |
-        v
-canonical.models.CandleRequest
-        |
-        v
-BrokerRestService
-        |
-        v
-BrokerRegistry["angelone"]
-        |
-        v
-AngelOneRestAdapter
-        |
-        v
-AngelRestBroker
-        |
-        v
-SmartApiTransport.get_candles()
-        |
-        v
-AngelOne SmartAPI
+Example: historical candles.
+
+```mermaid
+flowchart TB
+    Client["API client<br/>POST /market/{broker}/{exchange}/candles"]
+
+    subgraph Rest["REST runtime"]
+        Route["market.py<br/>get_candles"]
+        Schema["CandlePayload<br/>Pydantic validation"]
+        ErrorHandler["call_or_raise<br/>HTTP error mapping"]
+    end
+
+    subgraph Canonical["Canonical layer"]
+        Request["CandleRequest"]
+        Service["BrokerRestService.get_candles"]
+        Registry["BrokerRegistry[broker]"]
+    end
+
+    subgraph AngelOne["AngelOne adapter"]
+        Adapter["AngelOneRestAdapter"]
+        Broker["AngelRestBroker"]
+        Payload["SmartAPI candle payload"]
+        Transport["SmartAPI transport"]
+    end
+
+    Client --> Route --> Schema --> Request --> Service
+    Service --> Registry --> Adapter --> Broker --> Payload --> Transport
+    Transport --> Broker --> Adapter --> Service --> ErrorHandler --> Client
 ```
 
-REST routes should stay thin. Validation and normalization happen at the REST
-schema and canonical model boundaries. AngelOne-specific lookups, tokens,
-payloads, sessions, and SDK calls remain inside AngelOne modules.
+Routes should stay thin. Request validation belongs at REST schema and
+canonical model boundaries. Broker-specific lookups, tokens, payloads, and
+session refresh stay inside broker modules.
 
 ## Canonical Broker Layer
 
 The canonical layer is the broker-neutral contract used by runtimes and broker
 adapters.
 
-It currently models:
-
 | Area | Request model | Response model |
-|---|---|---|
+| --- | --- | --- |
 | Scrip lookup | `ScripRequest` | `ScripResponse` |
 | Scrip list | `ScripListRequest` | `ScripListResponse` |
 | LTP | `LtpRequest` | `LtpResponse` |
@@ -129,132 +170,81 @@ It currently models:
 | Candles | `CandleRequest` | `CandleResponse` |
 | Account | `AccountRequest` | `AccountResponse` |
 
-Broker tokens, SDK payload names, and provider-specific response quirks should
-not leak into canonical models.
+Broker SDK names, token fields, session details, and provider-specific payload
+quirks must not leak into canonical models unless the public API contract
+explicitly requires them.
 
 ## Broker Registry
 
-```text
-create_broker_rest_service()
-        |
-        v
-create_default_rest_registry()
-        |
-        v
-register AngelOneRestAdapter
+Broker registration is centralized so route code does not instantiate concrete
+broker classes.
+
+```mermaid
+flowchart TB
+    Factory["create_broker_rest_service"]
+    RegistryFactory["create_default_rest_registry"]
+    Registry["BrokerRegistry"]
+    Adapter["AngelOneRestAdapter"]
+    Routes["REST routes"]
+
+    Factory --> RegistryFactory --> Registry
+    RegistryFactory --> Adapter
+    Routes --> Factory
 ```
 
-`data_layer.brokers.rest_registry` wires available REST adapters into the
-canonical service. Route code should not instantiate concrete broker classes.
-
-Current broker:
+Current REST broker:
 
 ```text
 angelone
 ```
 
-Future brokers should provide a canonical adapter and register through this
-factory.
+Future brokers should implement a canonical adapter and register through the
+same factory path.
 
 ## AngelOne REST Module
 
-AngelOne is split by responsibility:
+AngelOne-specific behavior is split by responsibility.
 
 | File | Responsibility |
-|---|---|
-| `angel_instrument.py` | Parse and index AngelOne scrip master data. |
-| `angel_rest_broker.py` | Facade for AngelOne REST operations. |
-| `angelone_adapter.py` | Translate canonical requests to AngelOne calls. |
-| `smartapi/session.py` | SmartAPI credentials, TOTP, login, refresh, logout. |
-| `smartapi/transport.py` | SmartAPI SDK method calls. |
-| `smartapi/payloads.py` | Build SmartAPI candle, LTP, and quote payloads. |
-| `smartapi/instrument_resolver.py` | Resolve name-based app symbols to AngelOne instruments. |
-| `smartapi/account.py` | Account operation wrappers. |
-| `smartapi/errors.py` | Error normalization and retry behavior. |
+| --- | --- |
+| `angelone_adapter.py` | Translate canonical requests/responses to AngelOne operations |
+| `angel_rest_broker.py` | Broker facade for AngelOne REST operations |
+| `angel_instrument.py` | Parse and index AngelOne scrip master data |
+| `smartapi/session.py` | SmartAPI login, TOTP, refresh, logout |
+| `smartapi/transport.py` | SmartAPI SDK method calls |
+| `smartapi/payloads.py` | Build SmartAPI LTP, quote, and candle payloads |
+| `smartapi/instrument_resolver.py` | Resolve app symbols to AngelOne instruments |
+| `smartapi/account.py` | Account operation wrappers |
+| `smartapi/errors.py` | SmartAPI error normalization and retry behavior |
 
-### AngelOne Design Notes
+Instrument lookup is intentionally isolated.
 
-```text
-Name from REST request
-        |
-        v
-AngelInstrumentResolver
-        |
-        v
-AngelOneBroker instrument index
-        |
-        v
-AngelOne token and tradingsymbol
-        |
-        v
-SmartAPI payload
+```mermaid
+flowchart TB
+    Symbol["Name from REST request"]
+    Resolver["AngelInstrumentResolver"]
+    Index["AngelOne instrument index"]
+    Token["AngelOne token<br/>and tradingsymbol"]
+    Payload["SmartAPI payload"]
+
+    Symbol --> Resolver --> Index --> Token --> Payload
 ```
-
-Key decisions:
-
-- Instrument lookup is name-based by design.
-- Symbol and token lookup are not part of the public lookup contract.
-- BSE stocks are mapped through `bse_others` because BSE symbols do not expose
-  the same `-EQ` convention used by NSE.
-- `AngelRestBroker` lazily loads instruments only when a lookup is needed.
-- SmartAPI session refresh is handled by a decorator around authenticated
-  broker calls.
-- Unknown scrips currently fail through the broker operation error path.
-
-## REST Runtime
-
-The REST runtime is under `data_layer/runtimes/rest`.
-
-```text
-runtimes/rest/
-|-- app.py              FastAPI app factory
-|-- routes/             API route modules
-|-- schemas.py          Pydantic request payloads
-|-- errors.py           HTTP error mapping
-|-- middleware.py       Request logging middleware
-|-- config.py           Runtime environment settings
-|-- run.py              Local uvicorn entrypoint
-`-- lambda_handler.py   AWS Lambda handler frame
-```
-
-### Endpoints
-
-| Method | Path | Status |
-|---|---|---|
-| `GET` | `/health` | Ready |
-| `GET` | `/market/brokers` | Ready |
-| `GET` | `/market/{broker}/{exchange}/intervals` | Ready |
-| `GET` | `/market/{broker}/{exchange}/scrips` | Ready |
-| `GET` | `/market/{broker}/{exchange}/ltp?symbol=SBIN,RELIANCE` | Ready |
-| `POST` | `/market/{broker}/{exchange}/quotes` | Ready |
-| `POST` | `/market/{broker}/{exchange}/candles` | Ready; pre-validation needs hardening |
-| `GET` | `/funda/{market}` | Work in progress |
-| `GET` | `/account/{broker}/profile` | Work in progress |
-| `GET` | `/account/{broker}/funds` | Work in progress |
-| `GET` | `/account/{broker}/holdings` | Work in progress |
-| `GET` | `/account/{broker}/positions` | Work in progress |
-| `GET` | `/account/{broker}/orders` | Work in progress |
-| `GET` | `/account/{broker}/trades` | Work in progress |
-
-Account routes are wired but marked `work_in_progress` until the final account
-contract is reviewed. Fundamentals are reserved and also marked
-`work_in_progress`.
 
 ## Market Limits
 
-AngelOne market-data requests are guarded at the REST boundary.
+Market request limits are enforced at the REST boundary before broker calls.
 
 | Limit | Current behavior |
-|---|---|
-| Quote symbols | Max `50` symbols per request. |
-| Multi-symbol LTP | Max `50` comma-separated symbols. |
-| Quote modes | `LTP`, `OHLC`, `FULL`. |
-| Candle intervals | AngelOne interval constants only. |
+| --- | --- |
+| Quote symbols | Max `50` symbols per request |
+| Multi-symbol LTP | Max `50` comma-separated symbols |
+| Quote modes | `LTP`, `OHLC`, `FULL` |
+| Candle intervals | AngelOne interval constants |
 
-Supported candle intervals exposed by the REST runtime:
+Supported candle intervals:
 
-| Label | AngelOne value |
-|---|---|
+| Label | Value |
+| --- | --- |
 | `1m` | `ONE_MINUTE` |
 | `3m` | `THREE_MINUTE` |
 | `5m` | `FIVE_MINUTE` |
@@ -272,144 +262,175 @@ Supported candle intervals exposed by the REST runtime:
 .\at-venv\Scripts\python.exe -m data_layer.runtimes.rest.run
 ```
 
-Default local URL:
+### AWS Lambda
 
-```text
-http://127.0.0.1:8000
-```
-
-### AWS Lambda Frame
-
-The Lambda handler is available at:
+The Lambda entry point is:
 
 ```text
 data_layer.runtimes.rest.lambda_handler.handler
 ```
 
-The handler uses Mangum:
+Runtime frame:
 
-```text
-API Gateway or Lambda Function URL
-        |
-        v
-Mangum
-        |
-        v
-FastAPI app
+```mermaid
+flowchart LR
+    Gateway["API Gateway HTTP API"]
+    Mangum["Mangum adapter"]
+    FastAPI["FastAPI app"]
+    Routes["REST routes"]
+
+    Gateway --> Mangum --> FastAPI --> Routes
 ```
 
-Deployment packages must include `mangum`.
+Deployment packages must include the dependencies listed in
+[`requirements-lambda.txt`](./requirements-lambda.txt).
 
-## Configuration
+## Security Model
 
-AngelOne credentials are read from environment variables when explicit
-credentials are not injected:
-
-| Variable | Purpose |
-|---|---|
-| `ANGELONE_API_KEY` | SmartAPI app API key |
-| `ANGELONE_CLIENT_CODE` | AngelOne client code |
-| `ANGELONE_PASSWORD` | AngelOne password |
-| `ANGELONE_TOTP_SECRET` | TOTP secret for login |
-
-REST runtime settings are environment-driven for host, port, reload, and log
-level.
+- API Gateway is expected to enforce IAM/SigV4 for protected endpoints.
+- `/health` is intentionally public.
+- Broker credentials are read from environment variables at runtime.
+- Broker credentials and session state must stay inside broker modules.
+- Do not commit real API URLs, broker credentials, access keys, or session
+  tokens.
+- Account and fundamentals routes are retained for contract visibility but are
+  work-in-progress.
 
 ## Error Handling
 
-```text
-Broker-specific error
-        |
-        v
-Canonical broker error
-        |
-        v
-REST HTTP error response
+Errors are normalized before they reach clients.
+
+```mermaid
+flowchart TB
+    Provider["Broker/provider error"]
+    Adapter["Broker adapter normalization"]
+    Canonical["CanonicalBrokerError"]
+    Rest["REST exception handler"]
+    Client["Structured HTTP response"]
+
+    Provider --> Adapter --> Canonical --> Rest --> Client
 ```
 
 Current HTTP mapping:
 
 | Error | HTTP status |
-|---|---|
-| Validation failure | `422` |
-| Broker not registered | `404` |
-| Broker operation failure | `502` |
-| AngelOne setup/runtime failure | `503` |
+| --- | --- |
+| FastAPI/Pydantic validation failure | `422` |
+| `BrokerValidationError` | `422` |
+| `BrokerNotRegisteredError` | `404` |
+| `BrokerOperationError` | `502` |
+| `AngelOneSmartApiRestBrokerError` | `503` |
 | Unexpected failure | `500` |
 
-SmartAPI transport errors are normalized before they reach REST handlers.
-Transient failures are retried. Authentication failures trigger one broker-level
-session refresh.
+Canonical errors return:
 
-## Development Status
-
-```text
-Done
-|-- Canonical broker models and registry
-|-- AngelOne REST facade and adapter
-|-- AngelOne session management
-|-- AngelOne market quotes, LTP, candles, and scrip listing
-|-- FastAPI REST runtime
-|-- AWS Lambda handler frame
-|-- CI workflow for tests
-|-- Unit tests for canonical, AngelOne, and REST runtime modules
-
-In Progress
-|-- Final account REST response contract
-|-- Fundamental data namespace
-|-- Candle payload pre-validation before SmartAPI calls
-|-- Derivative modules for futures and options
-|-- Additional brokers
-|-- WebSocket runtime
+```json
+{
+  "detail": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable message",
+    "details": {}
+  }
+}
 ```
 
-## Testing
+FastAPI/Pydantic validation errors use the standard validation error shape.
 
-Run the full test suite:
+## Module Map
+
+```mermaid
+flowchart TD
+    subgraph Runtime["runtimes/rest"]
+        App["app.py<br/>FastAPI factory"]
+        Routes["routes/*<br/>HTTP endpoints"]
+        Schemas["schemas.py<br/>request payload validation"]
+        Errors["errors.py<br/>HTTP error mapping"]
+        Lambda["lambda_handler.py<br/>AWS Lambda entry point"]
+    end
+
+    subgraph Canonical["brokers/canonical"]
+        Models["models.py<br/>broker-neutral models"]
+        Service["service.py<br/>canonical use cases"]
+        Registry["registry.py<br/>adapter lookup"]
+        Ports["ports.py<br/>adapter contracts"]
+    end
+
+    subgraph Broker["brokers/angelone/rest"]
+        Adapter["angelone_adapter.py"]
+        Facade["angel_rest_broker.py"]
+        SmartApi["smartapi/*"]
+    end
+
+    App --> Routes
+    Routes --> Schemas
+    Routes --> Service
+    Service --> Models
+    Service --> Registry
+    Registry --> Ports
+    Registry --> Adapter
+    Adapter --> Facade
+    Facade --> SmartApi
+    Routes --> Errors
+    Lambda --> App
+```
+
+For code-level details:
+
+- `runtimes/rest/routes`: HTTP route definitions
+- `runtimes/rest/schemas.py`: REST payload validation
+- `runtimes/rest/errors.py`: HTTP error mapping
+- `brokers/canonical`: broker-neutral contracts and service
+- `brokers/rest_registry.py`: default REST broker registration
+- `brokers/angelone/rest`: AngelOne adapter and broker facade
+- `brokers/angelone/rest/smartapi`: SmartAPI session, payload, transport, and
+  instrument resolution
+
+## Tests
+
+Run the data-layer tests.
+
+```powershell
+.\at-venv\Scripts\python.exe -m pytest tests\data_layer -q
+```
+
+Run the broader repository test suite.
 
 ```powershell
 .\at-venv\Scripts\python.exe -m pytest -q
 ```
 
-Run formatting check:
+Run formatting checks.
 
 ```powershell
-.\at-venv\Scripts\python.exe -m black --check --line-length 79 --target-version py313 data_layer tests
+.\at-venv\Scripts\python.exe -m black --check data_layer tests
 ```
 
-## Adding a New Broker
+## Extension Rules
 
-```text
-New broker SDK/client
-        |
-        v
-Broker-specific facade
-        |
-        v
-Canonical adapter
-        |
-        v
-Broker registry
-        |
-        v
-Existing REST routes
-```
-
-Expected steps:
+When adding a new broker:
 
 1. Create the broker-specific facade under `data_layer/brokers/{broker}`.
-2. Translate broker operations into canonical responses through an adapter.
+2. Implement a canonical adapter for the broker.
 3. Register the adapter in `data_layer/brokers/rest_registry.py`.
-4. Add unit tests for payload translation, errors, and registry wiring.
-5. Keep broker-specific fields out of canonical models unless the product
-   contract explicitly requires them.
+4. Keep broker-specific payload names and token fields out of canonical models.
+5. Add tests for payload translation, error normalization, and registry wiring.
+
+When adding a new endpoint:
+
+1. Update `data-layer-rest.openapi.yaml`.
+2. Add or update REST schemas for request validation.
+3. Add a thin route that delegates to the canonical service.
+4. Keep provider-specific logic out of route code.
+5. Add tests at the nearest useful boundary.
+6. Add or update `data_client` support only after the API contract is stable.
 
 ## Design Guardrails
 
-- Keep canonical models broker-neutral.
-- Keep AngelOne tokens and SmartAPI payload names inside AngelOne modules.
-- Keep REST routes thin.
-- Keep REST and WebSocket concerns separate.
-- Keep instrument translation behind resolver/adapter boundaries.
+- Canonical models must remain broker-neutral.
+- REST and WebSocket concerns must stay separate.
+- REST routes should be thin.
+- Instrument translation must stay behind resolver/adapter boundaries.
+- Provider registry should only wire providers; it should not collect business
+  logic.
 - Prefer small explicit modules over broad shared abstractions.
-- Add tests for every behavior change at the nearest useful boundary.
+- Add tests for every behavior change at the boundary where it matters.

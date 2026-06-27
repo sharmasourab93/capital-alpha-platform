@@ -13,6 +13,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   pytest:
     name: Run tests
@@ -37,6 +41,9 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --all-extras --dev
+
+      - name: Run data client tests
+        run: uv run pytest tests/data_client -q
 
       - name: Run tests
         run: uv run pytest -q

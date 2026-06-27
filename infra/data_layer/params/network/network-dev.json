@@ -28,8 +28,16 @@
     "ParameterValue": "10.40.11.0/24"
   },
   {
-    "ParameterKey": "NatGatewayMode",
-    "ParameterValue": "Single"
+    "ParameterKey": "EgressMode",
+    "ParameterValue": "NatInstanceSingle"
+  },
+  {
+    "ParameterKey": "NatInstanceType",
+    "ParameterValue": "t4g.nano"
+  },
+  {
+    "ParameterKey": "NatInstanceAmiId",
+    "ParameterValue": "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64"
   },
   {
     "ParameterKey": "AllowedHttpsEgressCidr1",

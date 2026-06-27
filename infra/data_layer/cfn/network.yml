@@ -44,13 +44,30 @@ Parameters:
     Default: 10.40.11.0/24
     Description: CIDR block for private subnet B.
 
-  NatGatewayMode:
+  EgressMode:
     Type: String
-    Default: Single
+    Default: None
     AllowedValues:
-      - Single
-      - PerAz
-    Description: Single is cheaper; PerAz gives better availability.
+      - None
+      - NatGatewaySingle
+      - NatGatewayPerAz
+      - NatInstanceSingle
+    Description: Outbound internet mode for private subnets.
+
+  NatInstanceType:
+    Type: String
+    Default: t4g.nano
+    AllowedValues:
+      - t4g.nano
+      - t4g.micro
+      - t3.nano
+      - t3.micro
+    Description: EC2 instance type used only when EgressMode is NatInstanceSingle.
+
+  NatInstanceAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
+    Description: Amazon Linux AMI for NatInstanceSingle. Default matches t4g ARM instance types.
 
   AllowedHttpsEgressCidr1:
     Type: String
@@ -73,7 +90,12 @@ Parameters:
     Description: Optional managed prefix list ID allowed for HTTPS egress.
 
 Conditions:
-  UseNatPerAz: !Equals [!Ref NatGatewayMode, PerAz]
+  UseNatGateway: !Or
+    - !Equals [!Ref EgressMode, NatGatewaySingle]
+    - !Equals [!Ref EgressMode, NatGatewayPerAz]
+  UseNatGatewayPerAz: !Equals [!Ref EgressMode, NatGatewayPerAz]
+  UseNatInstance: !Equals [!Ref EgressMode, NatInstanceSingle]
+  UsePrivateInternetEgress: !Not [!Equals [!Ref EgressMode, None]]
   HasAllowedHttpsEgressCidr1: !Not [!Equals [!Ref AllowedHttpsEgressCidr1, ""]]
   HasAllowedHttpsEgressCidr2: !Not [!Equals [!Ref AllowedHttpsEgressCidr2, ""]]
   HasAllowedHttpsEgressCidr3: !Not [!Equals [!Ref AllowedHttpsEgressCidr3, ""]]
@@ -181,6 +203,7 @@ Resources:
 
   NatEipA:
     Type: AWS::EC2::EIP
+    Condition: UseNatGateway
     DependsOn: InternetGatewayAttachment
     Properties:
       Domain: vpc
@@ -190,6 +213,7 @@ Resources:
 
   NatGatewayA:
     Type: AWS::EC2::NatGateway
+    Condition: UseNatGateway
     Properties:
       AllocationId: !GetAtt NatEipA.AllocationId
       SubnetId: !Ref PublicSubnetA
@@ -199,7 +223,7 @@ Resources:
 
   NatEipB:
     Type: AWS::EC2::EIP
-    Condition: UseNatPerAz
+    Condition: UseNatGatewayPerAz
     DependsOn: InternetGatewayAttachment
     Properties:
       Domain: vpc
@@ -209,13 +233,68 @@ Resources:
 
   NatGatewayB:
     Type: AWS::EC2::NatGateway
-    Condition: UseNatPerAz
+    Condition: UseNatGatewayPerAz
     Properties:
       AllocationId: !GetAtt NatEipB.AllocationId
       SubnetId: !Ref PublicSubnetB
       Tags:
         - Key: Name
           Value: !Sub "${ProjectName}-${EnvironmentName}-nat-b"
+
+  NatInstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: UseNatInstance
+    Properties:
+      GroupDescription: Allows private subnets to egress through the NAT instance.
+      GroupName: !Sub "${ProjectName}-${EnvironmentName}-nat-instance-sg"
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref PrivateSubnetACidr
+          Description: HTTPS from private subnet A.
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref PrivateSubnetBCidr
+          Description: HTTPS from private subnet B.
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Outbound internet from NAT instance.
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${EnvironmentName}-nat-instance-sg"
+
+  NatInstance:
+    Type: AWS::EC2::Instance
+    Condition: UseNatInstance
+    Properties:
+      ImageId: !Ref NatInstanceAmiId
+      InstanceType: !Ref NatInstanceType
+      SourceDestCheck: false
+      SubnetId: !Ref PublicSubnetA
+      SecurityGroupIds:
+        - !Ref NatInstanceSecurityGroup
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -eux
+          sysctl -w net.ipv4.ip_forward=1
+          echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/99-capital-alpha-nat.conf
+          dnf install -y iptables-services
+          DEFAULT_IFACE="$(ip route show default | awk '{print $5; exit}')"
+          iptables -t nat -A POSTROUTING -o "${!DEFAULT_IFACE}" -j MASQUERADE
+          service iptables save
+          systemctl enable --now iptables
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${EnvironmentName}-nat-instance"
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref EnvironmentName
 
   PrivateRouteTableA:
     Type: AWS::EC2::RouteTable
@@ -235,17 +314,24 @@ Resources:
 
   PrivateDefaultRouteA:
     Type: AWS::EC2::Route
+    Condition: UsePrivateInternetEgress
     Properties:
       RouteTableId: !Ref PrivateRouteTableA
       DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NatGatewayA
+      NatGatewayId: !If [UseNatGateway, !Ref NatGatewayA, !Ref AWS::NoValue]
+      InstanceId: !If [UseNatInstance, !Ref NatInstance, !Ref AWS::NoValue]
 
   PrivateDefaultRouteB:
     Type: AWS::EC2::Route
+    Condition: UsePrivateInternetEgress
     Properties:
       RouteTableId: !Ref PrivateRouteTableB
       DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !If [UseNatPerAz, !Ref NatGatewayB, !Ref NatGatewayA]
+      NatGatewayId: !If
+        - UseNatGateway
+        - !If [UseNatGatewayPerAz, !Ref NatGatewayB, !Ref NatGatewayA]
+        - !Ref AWS::NoValue
+      InstanceId: !If [UseNatInstance, !Ref NatInstance, !Ref AWS::NoValue]
 
   PrivateSubnetARouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation

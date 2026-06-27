@@ -25,7 +25,7 @@
   },
   {
     "ParameterKey": "OpenApiS3Key",
-    "ParameterValue": "openapi/data-layer-rest.openapi.json"
+    "ParameterValue": "openapi/data-layer-rest.openapi.yaml"
   },
   {
     "ParameterKey": "OpenApiS3ObjectVersion",

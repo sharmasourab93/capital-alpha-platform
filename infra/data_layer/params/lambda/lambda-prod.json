@@ -28,10 +28,6 @@
     "ParameterValue": ""
   },
   {
-    "ParameterKey": "CodeS3Key",
-    "ParameterValue": "lambda/data-layer-rest/latest.zip"
-  },
-  {
     "ParameterKey": "CodeS3ObjectVersion",
     "ParameterValue": ""
   },
@@ -41,11 +37,11 @@
   },
   {
     "ParameterKey": "TimeoutSeconds",
-    "ParameterValue": "20"
+    "ParameterValue": "90"
   },
   {
     "ParameterKey": "ReservedConcurrentExecutions",
-    "ParameterValue": "20"
+    "ParameterValue": "0"
   },
   {
     "ParameterKey": "LogRetentionDays",
