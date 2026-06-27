@@ -1,276 +1,481 @@
 # Capital Alpha Platform
 
-Capital Alpha Platform is an architecture-first Python repository for a production-minded trading and investment intelligence system. The product goal is to provide a disciplined decision-support platform for market data ingestion, portfolio visibility, research workflows, recommendation pipelines, alerting, and execution-adjacent integrations.
+Capital Alpha Platform is a modular Python platform for market-data access,
+broker integration, and downstream analytical workflows. The engineering goal
+is to build a reliable data foundation: clean inputs, explicit contracts,
+auditable processing, and useful outputs for a human operator.
 
-This repository intentionally represents the public platform layer only. Proprietary alpha models, strategy logic, ranking systems, and private research processes are excluded.
+This repository represents the reusable platform layer. Proprietary alpha
+models, ranking logic, strategy formulas, private prompts, and confidential
+datasets are intentionally excluded.
 
-## Table of Contents
+## Why This Exists
 
-- [Product Intent](#product-intent)
-- [Repository Scope](#repository-scope)
-- [System Goals](#system-goals)
-- [Architecture Direction](#architecture-direction)
-- [Target Capability Model](#target-capability-model)
-- [Repository Status](#repository-status)
-- [Technology Baseline](#technology-baseline)
-- [Getting Started](#getting-started)
-- [Planned Repository Shape](#planned-repository-shape)
-- [Operating Principles](#operating-principles)
-- [Delivery Roadmap](#delivery-roadmap)
-- [Security and Compliance Notes](#security-and-compliance-notes)
-- [Contributing](#contributing)
-- [Disclaimer](#disclaimer)
+Retail and semi-professional market workflows often fail for engineering
+reasons before they fail for investment reasons:
 
-## Product Intent
+- market data is fragmented across brokers, APIs, scripts, and spreadsheets
+- broker integrations leak provider-specific details into application logic
+- analysis workflows are hard to reproduce or audit
+- automation is added before the data boundary is trustworthy
+- systems become expensive or complex before product-market fit is proven
 
-Most retail and semi-professional market tooling breaks down in one of four ways:
+Capital Alpha addresses this by starting with a strong platform foundation:
 
-- data is fragmented across brokers, spreadsheets, scripts, and notes
-- workflows are too manual to scale with discipline
-- automation is too shallow to support repeatable decisions
-- systems are overbuilt before the core operating loop is proven
+- canonical data contracts before higher-level workflows
+- explicit provider adapters instead of hidden broker coupling
+- API-first access for dashboards, services, notebooks, and future agents
+- low-cost AWS deployment primitives for early-stage operation
+- testable boundaries that can support larger application workflows
 
-Capital Alpha Platform exists to solve that with a lean, modular system that helps a user:
+The intended outcome is not a black-box trading bot. It is a high-trust
+platform foundation for market data, broker access, monitoring, and downstream
+decision-support applications.
 
-- ingest and normalize market, broker, and portfolio data
-- run scans, backtests, and recurring research workflows
-- generate structured recommendations and review queues
-- monitor thesis drift, portfolio exposure, and execution outcomes
-- surface alerts that support better capital allocation decisions
+## Current State
 
-The intended outcome is not a black-box trading bot. It is a high-trust decision-support system with a human operator at the center.
+The repository is no longer only an architecture sketch. The implemented
+foundation now includes:
 
-## Repository Scope
+| Area | Status | Notes |
+| --- | --- | --- |
+| Data-layer REST runtime | Implemented | FastAPI app with Lambda/Mangum entrypoint |
+| OpenAPI contract | Implemented | YAML contract with security, errors, CORS, route metadata |
+| AngelOne REST integration | Implemented for market data | LTP, quotes, candles, scrip lookup/listing |
+| Canonical broker layer | Implemented | Broker-neutral models, ports, registry, service |
+| Data client SDK | Implemented | Thin Python client with IAM/SigV4 signing |
+| DataFrame output | Implemented | Optional client-side conversion for analytical workflows |
+| AWS infrastructure | Implemented foundation | CloudFormation for network, S3, Lambda, API Gateway, secrets pipeline |
+| CI/CD workflows | Implemented foundation | GitHub Actions for tests and data-layer deployments |
+| Account namespace | Contract visible, WIP | Routes retained but marked work-in-progress |
+| Fundamentals namespace | Contract visible, WIP | Placeholder namespace for later providers |
+| WebSocket runtime | Reserved | REST and WSS concerns intentionally separated |
 
-This repository is meant to communicate system design quality, product thinking, and implementation direction for the platform layer.
+## System Architecture
 
-### Included
+The platform is being built as a modular system with a strong data boundary.
+The current implemented slice is the data access foundation.
 
-- architecture and boundary definition
-- backend application structure
-- data ingestion patterns
-- orchestration and scheduled workflow design
-- broker and provider integration boundaries
-- portfolio and recommendation service patterns
-- alerting and dashboard-facing API direction
-- infrastructure and deployment conventions
+```mermaid
+flowchart TB
+    subgraph Consumers["Consumers"]
+        Service["Downstream analytical service"]
+        Dashboard["Dashboards / notebooks / services"]
+        Client["data_client<br/>thin Python SDK"]
+    end
 
-### Excluded
+    subgraph ApiBoundary["API Boundary"]
+        Gateway["API Gateway HTTP API<br/>IAM/SigV4 protected"]
+        Rest["data_layer REST runtime<br/>FastAPI + Lambda"]
+        Contract["OpenAPI YAML contract"]
+    end
 
-- proprietary trading strategies
-- alpha-generation logic
-- ranking formulas and conviction models
-- private prompts, research heuristics, or scoring systems
-- confidential datasets or live credentials
+    subgraph DomainBoundary["Canonical Data Layer"]
+        Models["Broker-neutral models"]
+        Service["Canonical broker service"]
+        Registry["Broker registry"]
+    end
 
-## System Goals
+    subgraph Providers["Provider Adapters"]
+        AngelOne["AngelOne REST adapter"]
+        FutureBrokers["Future brokers"]
+        Fundamentals["Future fundamentals providers"]
+    end
 
-- Build a modular monolith before introducing service decomposition.
-- Keep operating cost low during early product validation.
-- Preserve a canonical source of truth for positions, market data, and research artifacts.
-- Support both active trading workflows and longer-horizon investing workflows.
-- Maintain local-to-cloud execution symmetry wherever possible.
-- Design for auditability, reproducibility, and gradual hardening.
-
-## Architecture Direction
-
-The current architectural direction is a modular Python backend with clean domain boundaries and integration adapters around external systems.
-
-```text
-Operator / Dashboard / CLI
-            |
-            v
-        API Layer
-            |
-            v
-   Application and Domain Modules
-   - market data
-   - broker integration
-   - portfolio state
-   - strategy and backtest orchestration
-   - investing research workflows
-   - recommendations
-   - alerts and notifications
-            |
-            v
-    Persistence and Artifact Storage
-    - relational system of record
-    - object storage for raw payloads and documents
-            |
-            v
-       External Providers
-       - market data APIs
-       - broker APIs
-       - notification channels
-       - optional AI-assisted tooling
+    Service --> Client
+    Dashboard --> Client
+    Client --> Gateway
+    Contract --> Gateway
+    Gateway --> Rest
+    Rest --> Models
+    Rest --> Service
+    Service --> Registry
+    Registry --> AngelOne
+    Registry --> FutureBrokers
+    Registry --> Fundamentals
 ```
 
-### Design decisions
+The key design principle is separation of concerns:
 
-- Modular monolith first: fewer moving parts, faster iteration, easier testing.
-- Deterministic core with AI-assisted edges: system-of-record data should not depend on LLM output.
-- Explicit adapters at system boundaries: market data, brokers, notifications, and external research services should remain replaceable.
-- Eventual operational maturity: scheduling, retries, observability, and audit trails should be designed in early even if implemented incrementally.
+```mermaid
+flowchart LR
+    subgraph ClientSide["data_client owns"]
+        Urls["API URL construction"]
+        SigV4["IAM/SigV4 request signing"]
+        Http["HTTP transport"]
+        Frames["Optional DataFrame output"]
+    end
 
-## Target Capability Model
+    subgraph DataLayer["data_layer owns"]
+        Routes["REST route behavior"]
+        Contracts["Canonical contracts"]
+        Validation["Request validation"]
+        Errors["Error normalization"]
+    end
 
-### Trading workflows
+    subgraph BrokerSide["broker adapters own"]
+        Payloads["Provider payloads"]
+        Sessions["Provider auth/session"]
+        Instruments["Instrument resolution"]
+        Sdk["Broker SDK calls"]
+    end
 
-- instrument and market data ingestion
-- screening and signal preparation
-- backtesting and evaluation support
-- recommendation generation
-- paper-trading and execution-adjacent review flows
-- post-trade monitoring and feedback loops
+    ClientSide --> DataLayer --> BrokerSide
+```
 
-### Investing workflows
+## Implemented Components
 
-- watchlists and company tracking
-- filings, notes, and research artifact ingestion
-- thesis tracking and review cadence
-- conviction monitoring
-- recommendation support for longer-horizon positions
+### `data_layer`
 
-### Shared platform capabilities
+`data_layer` is the broker-facing service boundary. It exposes broker-neutral
+REST APIs and delegates provider-specific behavior to adapters.
 
-- identity and access boundaries
-- job orchestration
-- notification delivery
-- audit logging
-- portfolio analytics
-- dashboard and API contracts
+Implemented responsibilities:
 
-## Repository Status
+- FastAPI REST runtime
+- Lambda handler via Mangum
+- canonical broker models, registry, ports, and service
+- AngelOne REST adapter for market data
+- Pydantic request validation
+- structured HTTP error handling
+- OpenAPI contract in YAML
+- work-in-progress account and fundamentals namespaces
 
-This repository is currently in an early foundation stage.
+More detail: [data_layer/README.md](./data_layer/README.md)
 
-- `pyproject.toml` exists with the initial Python package baseline.
-- Application modules, infrastructure code, and implementation directories have not yet been built out.
-- The README therefore documents the intended system shape and engineering standards the repo should grow into.
+### `data_client`
 
-That is deliberate. A system-design-oriented product repo should be explicit about current maturity instead of overstating implementation status.
+`data_client` is a thin Python SDK for downstream applications. It exists so
+consumers do not need to know API Gateway, SigV4, URL construction, or
+response-shaping details.
 
-## Technology Baseline
+Implemented responsibilities:
 
-Current baseline from the repository:
+- one root client: `DataLayerClient.from_env()`
+- dynamic API URL resolution
+- IAM/SigV4 signing for protected endpoints
+- unsigned `/health` access
+- market endpoint helpers
+- optional pandas DataFrame output
+- unit tests and opt-in live integration tests
+
+More detail: [data_client/README.md](./data_client/README.md)
+
+### `infra/data_layer`
+
+Infrastructure is intentionally scoped to the data-layer deployment path.
+
+Implemented templates and parameter sets:
+
+- network
+- S3
+- Lambda
+- API Gateway
+- Secrets Manager pipeline template
+- OpenAPI rendering and validation scripts
+
+The current direction favors low-cost, reviewable CloudFormation stacks before
+introducing heavier orchestration.
+
+### `.github/workflows`
+
+GitHub Actions workflows cover:
+
+- test checks
+- data-layer network deployment
+- data-layer S3 deployment
+- data-layer Lambda deployment
+- data-layer API Gateway deployment
+- data-layer Secrets Manager stack deployment
+- CloudFormation stack deletion utility
+
+The Lambda workflow installs dependencies from
+`data_layer/requirements-lambda.txt` and uses commit-SHA artifact keys instead
+of a mutable `latest.zip`.
+
+## API Surface
+
+The current data-layer REST API exposes the following practical surface:
+
+| Method | Path | Status | Auth |
+| --- | --- | --- | --- |
+| `GET` | `/health` | Ready | Public |
+| `GET` | `/brokers` | Ready | IAM |
+| `GET` | `/market/brokers` | Ready | IAM |
+| `GET` | `/market/{broker}/{exchange}/intervals` | Ready | IAM |
+| `GET` | `/market/{broker}/{exchange}/scrips` | Ready | IAM |
+| `GET` | `/market/{broker}/{exchange}/ltp` | Ready | IAM |
+| `POST` | `/market/{broker}/{exchange}/quotes` | Ready | IAM |
+| `POST` | `/market/{broker}/{exchange}/candles` | Ready | IAM |
+| `GET` | `/account/{broker}/*` | WIP | IAM |
+| `GET` | `/funda/{market}` | WIP | IAM |
+
+The OpenAPI contract is the source of truth:
+
+[data_layer/data-layer-rest.openapi.yaml](./data_layer/data-layer-rest.openapi.yaml)
+
+## Request Flow
+
+Example: a downstream consumer asks for quotes.
+
+```mermaid
+flowchart TB
+    Caller["Python consumer<br/>dashboard, service, or notebook"]
+
+    subgraph SDK["data_client"]
+        Method["client.market.quotes(...)"]
+        Encode["Encode path, query, and JSON body"]
+        Sign["Sign request with AWS SigV4"]
+        Send["Send HTTPS request"]
+    end
+
+    subgraph API["AWS API boundary"]
+        Gateway["API Gateway<br/>IAM authorization"]
+        Lambda["Lambda + Mangum"]
+        FastAPI["FastAPI route"]
+    end
+
+    subgraph Core["data_layer"]
+        Canonical["Canonical request model"]
+        Service["BrokerRestService"]
+        Adapter["AngelOneRestAdapter"]
+        Broker["AngelRestBroker"]
+    end
+
+    Caller --> Method --> Encode --> Sign --> Send
+    Send --> Gateway --> Lambda --> FastAPI
+    FastAPI --> Canonical --> Service --> Adapter --> Broker
+    Broker --> Adapter --> Service --> FastAPI --> Caller
+```
+
+This flow is deliberately boring. The client handles access mechanics, the data
+layer handles canonical behavior, and adapters handle provider details.
+
+## Design Decisions
+
+| Decision | Why it matters |
+| --- | --- |
+| Modular monolith first | Keeps iteration fast and operational overhead low while boundaries are still forming |
+| Canonical broker contracts | Prevents AngelOne or any provider from leaking into platform-level logic |
+| Adapter/registry pattern | Allows additional brokers without rewriting routes or consumers |
+| REST and WebSocket separation | Keeps request/response workflows independent from streaming workflows |
+| OpenAPI-first hardening | Makes API behavior reviewable before more clients depend on it |
+| IAM/SigV4 for private APIs | Uses AWS-native authorization without custom auth infrastructure |
+| Public `/health` only | Preserves uptime checks without exposing data endpoints |
+| Thin data client | Keeps downstream applications focused on product logic, not API plumbing |
+| Explicit dependency files | Keeps Lambda packaging and local development auditable |
+| Commit-SHA artifacts | Makes deployment artifacts traceable and avoids mutable release keys |
+
+## Security and Operational Model
+
+Current security posture:
+
+- protected API Gateway routes are designed for IAM/SigV4 authorization
+- `/health` is intentionally public
+- broker credentials are supplied through runtime environment variables
+- Secrets Manager infrastructure exists for future migration, but the current
+  low-cost path continues to use environment configuration
+- no real credentials, API keys, session tokens, or account identifiers should
+  be committed
+- account and fundamentals routes remain visible but are marked
+  work-in-progress until contracts are finalized
+
+Operational hardening already started:
+
+- structured OpenAPI contract
+- reusable error response schemas
+- route-level WIP metadata for unfinished endpoint groups
+- Lambda dependency file
+- staged CloudFormation parameter files
+- CI test workflow
+- opt-in live integration tests for deployed data-client/API checks
+
+## Testing Strategy
+
+Testing is organized around boundaries:
+
+| Boundary | Test focus |
+| --- | --- |
+| canonical broker layer | model normalization, registry behavior, service dispatch |
+| AngelOne adapter/facade | payload translation, session behavior, error normalization |
+| REST runtime | routes, validation, Lambda handler, error responses |
+| data client | config, SigV4 signing, transport, endpoint mapping, DataFrame output |
+| infra scripts | OpenAPI rendering and validation helpers |
+
+Run the full suite:
+
+```powershell
+.\at-venv\Scripts\python.exe -m pytest -q
+```
+
+Run data-client tests:
+
+```powershell
+.\at-venv\Scripts\python.exe -m pytest tests\data_client -q
+```
+
+Run data-layer tests:
+
+```powershell
+.\at-venv\Scripts\python.exe -m pytest tests\data_layer -q
+```
+
+## Local Development
+
+Prerequisites:
 
 - Python `>=3.13`
-- project metadata managed in `pyproject.toml`
+- `uv` or the project virtual environment
+- AWS credentials only when calling deployed protected APIs
+- AngelOne credentials only when executing live broker-backed flows
 
-Planned baseline as the platform evolves:
+Install/sync dependencies:
 
-- `uv` for dependency and environment management
-- Python service/application modules
-- PostgreSQL as the primary canonical store
-- object storage for raw payloads, documents, and derived artifacts
-- background workers for sync, scans, alerts, and research jobs
-- API surface for dashboards, automation, and operator tooling
-
-## Getting Started
-
-The repository is not yet feature-complete, but the local development baseline should follow this shape.
-
-### Prerequisites
-
-- Python 3.13+
-- `uv` installed locally
-
-### Initial setup
-
-```bash
+```powershell
 uv sync
 ```
 
-If `uv` is not being used yet in your local environment, the current minimum viable setup is still simply installing against the Python version declared in `pyproject.toml`.
+Run the data-layer REST runtime locally:
 
-### Current state
+```powershell
+.\at-venv\Scripts\python.exe -m data_layer.runtimes.rest.run
+```
 
-There is no runnable application entrypoint yet. The next implementation milestone should establish:
+Use the data client:
 
-- source layout
-- environment configuration conventions
-- local development commands
-- testing baseline
-- linting and formatting baseline
+```python
+from data_client import DataLayerClient
 
-## Planned Repository Shape
+client = DataLayerClient.from_env()
+print(client.health())
+print(client.market.brokers())
+```
 
-The exact layout may evolve, but a clean direction for this repo is:
+## Repository Map
 
 ```text
 capital-alpha-platform/
-|-- pyproject.toml
-|-- README.md
-|-- src/
-|   `-- capital_alpha/
-|       |-- api/
-|       |-- application/
-|       |-- domain/
-|       |-- infrastructure/
-|       |-- integrations/
-|       `-- jobs/
+|-- data_layer/
+|   |-- runtimes/rest/          FastAPI and Lambda REST runtime
+|   |-- brokers/canonical/      broker-neutral contracts and service
+|   |-- brokers/angelone/rest/  AngelOne REST adapter and SmartAPI integration
+|   |-- data-layer-rest.openapi.yaml
+|   `-- requirements-lambda.txt
+|
+|-- data_client/
+|   |-- client.py              public SDK entry point
+|   |-- auth.py                IAM/SigV4 signing
+|   |-- transport.py           stateless JSON HTTP transport
+|   |-- output.py              raw/DataFrame output shaping
+|   `-- README.md
+|
+|-- infra/data_layer/
+|   |-- cfn/                   CloudFormation templates
+|   |-- params/                environment parameter files
+|   `-- scripts/               OpenAPI render/validation helpers
+|
 |-- tests/
-|-- scripts/
-|-- docs/
-|   |-- architecture/
-|   |-- adr/
-|   `-- runbooks/
-|-- infra/
-`-- .github/
+|   |-- data_layer/
+|   |-- data_client/
+|   `-- infra/
+|
+|-- .github/workflows/
+|-- pyproject.toml
+|-- uv.lock
+`-- README.md
 ```
 
-Recommended module boundaries:
+## Progress So Far
 
-- `domain`: core entities, policies, value objects, invariants
-- `application`: use cases, orchestration, commands, queries
-- `infrastructure`: persistence, queues, storage, observability
-- `integrations`: provider-specific adapters and clients
-- `api`: HTTP or internal service contracts
-- `jobs`: scheduled and asynchronous workflows
+Implemented foundation:
 
-## Operating Principles
+- Data-layer REST runtime with FastAPI and Lambda compatibility.
+- Broker-neutral canonical service, registry, ports, and models.
+- AngelOne market-data adapter for scrip lookup, LTP, quotes, and candles.
+- OpenAPI contract for the data-layer REST surface.
+- Thin Python data client with IAM/SigV4 signing and optional DataFrame output.
+- AWS infrastructure foundation for network, storage, Lambda, API Gateway, and
+  deployment workflows.
+- Test coverage across canonical models, broker adapters, REST runtime, data
+  client, and infrastructure helpers.
+- Package-level engineering documentation for `data_layer` and `data_client`.
 
-- Human-in-the-loop by default.
-- Prefer explicitness over hidden automation.
-- Keep core financial state auditable.
-- Separate proprietary alpha from reusable platform engineering.
-- Start simple, but preserve clean seams for later scale.
-- Document architectural decisions as the codebase grows.
+Next engineering milestones:
 
-## Delivery Roadmap
+- Finalize account endpoint contracts.
+- Add fundamentals provider support.
+- Continue improving deployment validation and observability.
+- Expand live integration coverage for deployed environments.
+- Introduce WebSocket runtime without coupling it to REST concerns.
 
-Suggested progression for this repository:
+## Engineering Principles
 
-1. Establish package structure, configuration strategy, and developer tooling.
-2. Implement foundational domain modules for market data, broker state, and portfolio views.
-3. Add ingestion jobs, persistence models, and integration adapters.
-4. Introduce recommendation, alerting, and dashboard-facing APIs.
-5. Harden operations with tests, observability, runbooks, and deployment automation.
+The main rule I have followed is to keep the platform honest about its
+boundaries. The data layer should expose broker-neutral behavior; anything
+that knows about a provider's tokens, payload names, sessions, or quirks should
+stay inside that provider's adapter.
 
-## Security and Compliance Notes
+I have kept the REST runtime intentionally thin. Routes should validate input,
+call the canonical service, and return a predictable response. They should not
+become the place where broker logic, instrument translation, or workflow
+decisions accumulate.
 
-- Never commit real broker credentials, API tokens, or production secrets.
-- Treat market, execution, and portfolio data as sensitive by default.
-- Keep auditability in mind for recommendations, state transitions, and operator actions.
-- If the system later handles regulated workflows, compliance controls must be formalized outside this README.
+I have also avoided adding broad abstractions before the use case is proven.
+The code favors small modules with explicit responsibilities: config, signing,
+transport, registry, adapter, schemas, and error mapping. That makes the system
+easier to review and easier to change.
 
-## Contributing
+OpenAPI is treated as an API contract, not as generated paperwork. The client,
+runtime, tests, and deployment configuration are expected to line up with that
+contract.
 
-Contributions should preserve the repo's core direction:
+The infrastructure choices are intentionally modest: low-cost AWS building
+blocks, clear parameter files, and deployment artifacts that can be traced back
+to a commit. The goal is to keep the system operable while the platform matures.
 
-- keep boundaries explicit
-- avoid premature microservices
-- prefer testable, deterministic workflows
-- document significant architectural decisions
-- do not add proprietary strategy logic to the public platform layer
+## Engineering Signals
 
-As the implementation matures, this section should be expanded with:
+This repository is meant to show how I think through a platform foundation. The
+interesting work here is not a trading strategy; it is the shape of the system
+around data access, external providers, API contracts, deployment, and testing.
 
-- coding standards
-- test commands
-- pull request expectations
-- architecture decision record requirements
+There are a few design choices I would expect to discuss in a technical review:
+
+- why I started with a modular monolith instead of splitting services early
+- why broker-neutral contracts came before higher-level workflows
+- why the provider adapter boundary matters when adding more brokers later
+- why IAM/SigV4 changes the shape of the Python client
+- why OpenAPI is maintained as a reviewed contract
+- where I chose low-cost infrastructure and where I left room to harden later
+- how tests are placed around boundaries instead of only around functions
+
+The repo is intentionally more explicit than clever. The aim is to make the
+tradeoffs visible: what is implemented now, what is still a placeholder, and
+where the next hardening steps should happen.
+
+## Scope Boundaries
+
+Included:
+
+- platform architecture
+- market-data and broker integration boundaries
+- REST API contracts
+- client SDK for data-layer access
+- AWS deployment foundation
+- tests and documentation for implemented boundaries
+
+Excluded:
+
+- proprietary alpha logic
+- strategy ranking formulas
+- private research heuristics
+- confidential datasets
+- live credentials or account-specific data
+- financial advice or execution guarantees
 
 ## Disclaimer
 
-This repository is for software engineering and system design purposes. It does not provide financial advice, investment advice, or execution guarantees. Any future production use of this platform should include appropriate operational controls, risk management, and legal review.
+This repository is for software engineering and system design purposes. It does
+not provide financial advice, investment advice, trading advice, or execution
+guarantees. Any production use should include appropriate operational controls,
+risk management, compliance review, and legal review.

@@ -171,7 +171,7 @@ adapters.
 | Account | `AccountRequest` | `AccountResponse` |
 
 Broker SDK names, token fields, session details, and provider-specific payload
-quirks must not leak into canonical models unless the public product contract
+quirks must not leak into canonical models unless the public API contract
 explicitly requires them.
 
 ## Broker Registry

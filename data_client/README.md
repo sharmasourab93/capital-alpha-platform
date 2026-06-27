@@ -89,7 +89,7 @@ and the deployed data-layer API.
 ```mermaid
 flowchart TB
     subgraph AppLayer["Downstream Application"]
-        App["Capital Alpha Brain<br/>dashboard worker, notebook, CLI, or service"]
+        App["Downstream consumer<br/>dashboard worker, notebook, CLI, or service"]
     end
 
     subgraph ClientLayer["data_client package"]
