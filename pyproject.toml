@@ -8,6 +8,7 @@ dependencies = [
     "isort==9.0.0a3",
     "logzero>=1.7.0",
     "pre-commit==4.6.0",
+    "pydantic>=2.13.3",
     "pycryptodome>=3.23.0",
     "pyotp>=2.9.0",
     "python-dotenv>=1.2.2",
