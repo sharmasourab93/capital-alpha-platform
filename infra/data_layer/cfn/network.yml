@@ -65,10 +65,9 @@ Parameters:
     Description: EC2 instance type used only when EgressMode is NatInstanceSingle.
 
   NatInstanceAmiId:
-    Type: String
-    Default: ""
-    AllowedPattern: "^$|^ami-[a-zA-Z0-9]+$"
-    Description: Required only for NatInstanceSingle. Use an Amazon Linux AMI configured for NAT.
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
+    Description: Amazon Linux AMI for NatInstanceSingle. Default matches t4g ARM instance types.
 
   AllowedHttpsEgressCidr1:
     Type: String

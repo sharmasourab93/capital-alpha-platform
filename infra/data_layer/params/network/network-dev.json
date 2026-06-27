@@ -29,7 +29,7 @@
   },
   {
     "ParameterKey": "EgressMode",
-    "ParameterValue": "None"
+    "ParameterValue": "NatInstanceSingle"
   },
   {
     "ParameterKey": "NatInstanceType",
@@ -37,7 +37,7 @@
   },
   {
     "ParameterKey": "NatInstanceAmiId",
-    "ParameterValue": ""
+    "ParameterValue": "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64"
   },
   {
     "ParameterKey": "AllowedHttpsEgressCidr1",
