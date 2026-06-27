@@ -7,10 +7,6 @@ on:
         description: AWS region.
         required: true
         default: ap-south-2
-      function_suffix:
-        description: Lambda function suffix used by the stack.
-        required: true
-        default: data-layer-rest
 
 permissions:
   contents: read
@@ -45,10 +41,18 @@ jobs:
             *) ENV_NAME="dev" ;;
           esac
 
-          FUNCTION_SUFFIX="${{ inputs.function_suffix }}"
+          PARAM_FILE="infra/data_layer/params/lambda/lambda-${ENV_NAME}.json"
+          FUNCTION_SUFFIX="$(jq -r '.[] | select(.ParameterKey == "FunctionNameSuffix") | .ParameterValue' "$PARAM_FILE")"
+
+          if [[ -z "$FUNCTION_SUFFIX" || "$FUNCTION_SUFFIX" == "null" ]]; then
+            echo "::error::Missing FunctionNameSuffix in ${PARAM_FILE}"
+            exit 1
+          fi
+
           ARTIFACT_KEY="lambda/${FUNCTION_SUFFIX}/${GITHUB_SHA}.zip"
 
           echo "env_name=${ENV_NAME}" >> "$GITHUB_OUTPUT"
+          echo "param_file=${PARAM_FILE}" >> "$GITHUB_OUTPUT"
           echo "function_suffix=${FUNCTION_SUFFIX}" >> "$GITHUB_OUTPUT"
           echo "artifact_key=${ARTIFACT_KEY}" >> "$GITHUB_OUTPUT"
 
@@ -110,7 +114,7 @@ jobs:
           ENV_NAME="${{ steps.deployment_context.outputs.env_name }}"
           FUNCTION_SUFFIX="${{ steps.deployment_context.outputs.function_suffix }}"
           ARTIFACT_KEY="${{ steps.deployment_context.outputs.artifact_key }}"
-          PARAM_FILE="infra/data_layer/params/lambda/lambda-${ENV_NAME}.json"
+          PARAM_FILE="${{ steps.deployment_context.outputs.param_file }}"
           STACK_NAME="capital-alpha-${ENV_NAME}-${FUNCTION_SUFFIX}-lambda"
           mapfile -t PARAM_OVERRIDES < <(jq -r '.[] | "\(.ParameterKey)=\(.ParameterValue)"' "$PARAM_FILE")
 
@@ -129,7 +133,6 @@ jobs:
 
           PARAM_OVERRIDES+=(
             "PythonUnbuffered=1"
-            "FunctionNameSuffix=${FUNCTION_SUFFIX}"
             "CodeS3Key=${ARTIFACT_KEY}"
             "AngelOneApiKey=${ANGELONE_API_KEY}"
             "AngelOneApiSecret=${ANGELONE_API_SECRET}"
