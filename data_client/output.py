@@ -8,8 +8,6 @@ not pay the import cost.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from functools import wraps
 from typing import Any, Literal
 
 from data_client.exceptions import DataLayerClientConfigError
@@ -17,25 +15,6 @@ from data_client.exceptions import DataLayerClientConfigError
 OutputMode = Literal["raw", "dataframe"]
 OutputShape = Literal["generic", "candles"]
 CANDLE_COLUMNS = ["date", "open", "high", "low", "close", "volume"]
-
-
-def dataframe_output(method: Callable[..., Any]) -> Callable[..., Any]:
-    """Decorate a client method with optional DataFrame conversion.
-
-    This decorator is kept available for future endpoint namespaces that may
-    prefer declaration-style DataFrame adaptation. Current methods use
-    ``adapt_output`` directly because some endpoints need shape-specific
-    conversion.
-    """
-
-    @wraps(method)
-    def wrapper(*args: Any, as_dataframe: bool = False, **kwargs: Any) -> Any:
-        payload = method(*args, **kwargs)
-        if as_dataframe:
-            return to_dataframe(payload)
-        return payload
-
-    return wrapper
 
 
 def adapt_output(

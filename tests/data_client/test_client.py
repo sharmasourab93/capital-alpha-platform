@@ -190,6 +190,31 @@ def test_ltp_list_symbols_are_sent_as_encoded_comma_query() -> None:
     ) == [{"symbol": "SBIN"}, {"symbol": "RELIANCE"}]
 
 
+def test_market_path_parameters_are_url_encoded() -> None:
+    """Verify broker and exchange path segments cannot alter route shape."""
+    transport = _Transport(
+        {
+            (
+                "GET",
+                "https://api.test/dev/market/broker%20one/NSE%2FDERIV/intervals",
+            ): {"intervals": []},
+        }
+    )
+    client = DataLayerClient(
+        DataLayerClientConfig(base_url="https://api.test/dev"),
+        credentials=AwsCredentials("access", "secret"),
+        transport=transport,
+    )
+
+    assert (
+        client.market.intervals(
+            broker="broker one",
+            exchange="NSE/DERIV",
+        )
+        == []
+    )
+
+
 def test_dataframe_output_is_optional() -> None:
     """Verify DataFrame conversion is opt-in per call."""
     transport = _Transport(

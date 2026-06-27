@@ -52,3 +52,37 @@ def test_sigv4_signature_is_stable_for_sorted_query_params() -> None:
         "x-amz-security-token, "
         "Signature=ac1080ccce468e3923a687c9430bd0a194c3b7f5382c04980bf47ed858c02516"
     )
+
+
+def test_sigv4_signature_handles_encoded_query_and_body() -> None:
+    """Verify signed requests are stable for encoded queries and JSON bodies."""
+    signer = SigV4Signer(
+        AwsCredentials(
+            "AKIDEXAMPLE",
+            "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+        ),
+        region="us-east-1",
+    )
+
+    headers = signer.sign(
+        "POST",
+        "https://abc.execute-api.us-east-1.amazonaws.com/prod/"
+        "market/angelone/NSE/quotes?symbol=SBIN%2CRELIANCE&space=a+b",
+        body=b'{"mode":"LTP","symbols":["SBIN"]}',
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        },
+        now=datetime(2015, 8, 30, 12, 36, tzinfo=timezone.utc),
+    )
+
+    assert headers["X-Amz-Content-Sha256"] == (
+        "a65bb7bd8ea70643f4a69b7e7ebf5a3b4d84fac9515b77b6c87d79bf2011427d"
+    )
+    assert headers["Authorization"] == (
+        "AWS4-HMAC-SHA256 "
+        "Credential=AKIDEXAMPLE/20150830/us-east-1/execute-api/aws4_request, "
+        "SignedHeaders=accept;content-type;host;x-amz-content-sha256;"
+        "x-amz-date, "
+        "Signature=dce9e09b42451e7a864b72bd1e8d919f737f5d4144150170bc4a7be3730360fe"
+    )

@@ -13,11 +13,16 @@ fields outside the response shape returned by the data layer.
 from __future__ import annotations
 
 from typing import Any, Literal
+from urllib.parse import quote
 
 from data_client.auth import AwsCredentials, SigV4Signer
 from data_client.config import DataLayerClientConfig
 from data_client.output import OutputMode, adapt_output
 from data_client.transport import HttpTransport
+
+ApiPayload = Any
+JsonBody = dict[str, Any]
+QueryParams = dict[str, str]
 
 
 class DataLayerClient:
@@ -101,10 +106,10 @@ class DataLayerClient:
         method: str,
         path: str,
         *,
-        query: dict[str, str] | None = None,
-        json_body: dict[str, Any] | None = None,
+        query: QueryParams | None = None,
+        json_body: JsonBody | None = None,
         auth_required: bool = True,
-    ) -> Any:
+    ) -> ApiPayload:
         """Send one request through the configured transport.
 
         Endpoint methods should stay small and delegate all cross-cutting
@@ -149,8 +154,10 @@ class MarketClient:
         as_dataframe: bool = False,
     ) -> Any:
         """Return supported candle intervals for one broker exchange."""
+        broker_path = _path_segment(broker)
+        exchange_path = _path_segment(exchange)
         payload = self._client._request(
-            "GET", f"/market/{broker}/{exchange}/intervals"
+            "GET", f"/market/{broker_path}/{exchange_path}/intervals"
         )
         return adapt_output(
             _extract(payload, "intervals"),
@@ -166,8 +173,10 @@ class MarketClient:
         as_dataframe: bool = False,
     ) -> Any:
         """Return known scrip labels for one broker exchange."""
+        broker_path = _path_segment(broker)
+        exchange_path = _path_segment(exchange)
         payload = self._client._request(
-            "GET", f"/market/{broker}/{exchange}/scrips"
+            "GET", f"/market/{broker_path}/{exchange_path}/scrips"
         )
         return adapt_output(
             _extract(payload, "data"),
@@ -189,10 +198,12 @@ class MarketClient:
         accepts either a single symbol or a list of symbols and normalizes the
         request without changing the response shape.
         """
+        broker_path = _path_segment(broker)
+        exchange_path = _path_segment(exchange)
         symbol_value = ",".join(symbol) if isinstance(symbol, list) else symbol
         payload = self._client._request(
             "GET",
-            f"/market/{broker}/{exchange}/ltp",
+            f"/market/{broker_path}/{exchange_path}/ltp",
             query={"symbol": symbol_value},
         )
         return adapt_output(
@@ -215,9 +226,11 @@ class MarketClient:
         ``mode`` is intentionally restricted to the documented OpenAPI enum so
         callers fail early when they pass an unsupported quote mode.
         """
+        broker_path = _path_segment(broker)
+        exchange_path = _path_segment(exchange)
         payload = self._client._request(
             "POST",
-            f"/market/{broker}/{exchange}/quotes",
+            f"/market/{broker_path}/{exchange_path}/quotes",
             json_body={"symbols": symbols, "mode": mode},
         )
         return adapt_output(
@@ -242,9 +255,11 @@ class MarketClient:
         Candle payloads are adapted with the specialized ``candles`` shape so
         DataFrame output gets stable OHLCV columns and a date index.
         """
+        broker_path = _path_segment(broker)
+        exchange_path = _path_segment(exchange)
         payload = self._client._request(
             "POST",
-            f"/market/{broker}/{exchange}/candles",
+            f"/market/{broker_path}/{exchange_path}/candles",
             json_body={
                 "symbol": symbol,
                 "interval": interval,
@@ -271,3 +286,8 @@ def _extract(payload: Any, key: str) -> Any:
     if isinstance(payload, dict) and key in payload:
         return payload[key]
     return payload
+
+
+def _path_segment(value: str) -> str:
+    """Return one URL-safe path segment without allowing slash traversal."""
+    return quote(value, safe="")

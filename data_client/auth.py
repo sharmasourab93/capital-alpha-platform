@@ -13,7 +13,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Mapping
-from urllib.parse import quote, urlsplit
+from urllib.parse import parse_qsl, quote, urlsplit
 
 from data_client.exceptions import DataLayerClientConfigError
 
@@ -209,12 +209,11 @@ def _canonical_query(query: str) -> str:
     if not query:
         return ""
     pairs = []
-    for part in query.split("&"):
-        key, separator, value = part.partition("=")
+    for key, value in parse_qsl(query, keep_blank_values=True):
         pairs.append(
             (
                 quote(key, safe="-_.~"),
-                quote(value if separator else "", safe="-_.~"),
+                quote(value, safe="-_.~"),
             )
         )
     return "&".join(f"{key}={value}" for key, value in sorted(pairs))

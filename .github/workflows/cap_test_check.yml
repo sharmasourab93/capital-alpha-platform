@@ -42,5 +42,8 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --dev
 
+      - name: Run data client tests
+        run: uv run pytest tests/data_client -q
+
       - name: Run tests
         run: uv run pytest -q
