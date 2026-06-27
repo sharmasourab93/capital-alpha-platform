@@ -37,7 +37,7 @@
   },
   {
     "ParameterKey": "TimeoutSeconds",
-    "ParameterValue": "20"
+    "ParameterValue": "60"
   },
   {
     "ParameterKey": "ReservedConcurrentExecutions",
