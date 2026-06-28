@@ -400,33 +400,6 @@ Resources:
       DestinationPrefixListId: !Ref AllowedHttpsEgressPrefixListId1
       Description: Allowed HTTPS egress managed prefix list 1.
 
-  EndpointSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Allows private workloads to reach interface VPC endpoints.
-      GroupName: !Sub "${ProjectName}-${EnvironmentName}-vpce-sg"
-      VpcId: !Ref Vpc
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          SourceSecurityGroupId: !Ref WorkloadSecurityGroup
-          Description: HTTPS from private workloads.
-      SecurityGroupEgress: []
-      Tags:
-        - Key: Name
-          Value: !Sub "${ProjectName}-${EnvironmentName}-vpce-sg"
-
-  WorkloadEgressToEndpointSecurityGroup:
-    Type: AWS::EC2::SecurityGroupEgress
-    Properties:
-      GroupId: !Ref WorkloadSecurityGroup
-      IpProtocol: tcp
-      FromPort: 443
-      ToPort: 443
-      DestinationSecurityGroupId: !Ref EndpointSecurityGroup
-      Description: HTTPS to private interface VPC endpoints.
-
   S3GatewayEndpoint:
     Type: AWS::EC2::VPCEndpoint
     Properties:
@@ -435,32 +408,6 @@ Resources:
         - !Ref PrivateRouteTableB
       ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
       VpcEndpointType: Gateway
-      VpcId: !Ref Vpc
-
-  SecretsManagerEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      PrivateDnsEnabled: true
-      SecurityGroupIds:
-        - !Ref EndpointSecurityGroup
-      ServiceName: !Sub "com.amazonaws.${AWS::Region}.secretsmanager"
-      SubnetIds:
-        - !Ref PrivateSubnetA
-        - !Ref PrivateSubnetB
-      VpcEndpointType: Interface
-      VpcId: !Ref Vpc
-
-  StsEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      PrivateDnsEnabled: true
-      SecurityGroupIds:
-        - !Ref EndpointSecurityGroup
-      ServiceName: !Sub "com.amazonaws.${AWS::Region}.sts"
-      SubnetIds:
-        - !Ref PrivateSubnetA
-        - !Ref PrivateSubnetB
-      VpcEndpointType: Interface
       VpcId: !Ref Vpc
 
 Outputs:
@@ -487,9 +434,3 @@ Outputs:
     Value: !Ref WorkloadSecurityGroup
     Export:
       Name: !Sub "${ProjectName}-${EnvironmentName}-workload-sg-id"
-
-  EndpointSecurityGroupId:
-    Description: Security group ID for interface VPC endpoints.
-    Value: !Ref EndpointSecurityGroup
-    Export:
-      Name: !Sub "${ProjectName}-${EnvironmentName}-vpce-sg-id"

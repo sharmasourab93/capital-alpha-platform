@@ -29,7 +29,7 @@
   },
   {
     "ParameterKey": "EgressMode",
-    "ParameterValue": "NatInstanceSingle"
+    "ParameterValue": "None"
   },
   {
     "ParameterKey": "NatInstanceType",
